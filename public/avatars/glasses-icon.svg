@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- White background -->
+  <rect width="200" height="200" fill="#FFFFFF"/>
+
+  <!-- Glasses centered, ~60% of canvas -->
+  <g transform="translate(38, 50) scale(0.6, 0.6)">
+    <!-- Left lens -->
+    <rect x="22" y="62" width="58" height="42" rx="16" ry="16"
+          fill="none" stroke="#1a1a1a" stroke-width="5"/>
+
+    <!-- Right lens -->
+    <rect x="120" y="62" width="58" height="42" rx="16" ry="16"
+          fill="none" stroke="#1a1a1a" stroke-width="5"/>
+
+    <!-- Bridge -->
+    <path d="M 80 75 Q 100 65 120 75"
+          fill="none" stroke="#1a1a1a" stroke-width="5" stroke-linecap="round"/>
+
+    <!-- Left temple -->
+    <path d="M 22 78 Q 10 72 4 68"
+          fill="none" stroke="#1a1a1a" stroke-width="5" stroke-linecap="round"/>
+
+    <!-- Right temple -->
+    <path d="M 178 78 Q 190 72 196 68"
+          fill="none" stroke="#1a1a1a" stroke-width="5" stroke-linecap="round"/>
+
+    <!-- Lens glare left -->
+    <path d="M 30 72 Q 40 66 52 70"
+          fill="none" stroke="#555555" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+
+    <!-- Lens glare right -->
+    <path d="M 128 72 Q 138 66 150 70"
+          fill="none" stroke="#555555" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+  </g>
+</svg>

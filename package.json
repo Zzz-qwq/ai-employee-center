@@ -1,0 +1,1 @@
+{"type":"module","scripts":{"dev":"vite","build":"tsc -b && vite build","preview":"vite preview"},"dependencies":{"@vitejs/plugin-react":"latest","vite":"latest","react":"latest","react-dom":"latest","lucide-react":"latest"},"devDependencies":{"typescript":"latest","tailwindcss":"latest","@tailwindcss/postcss":"latest","postcss":"latest","autoprefixer":"latest"}}

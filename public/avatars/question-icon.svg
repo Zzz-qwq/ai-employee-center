@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <rect width="200" height="200" fill="#FFFFFF"/>
+
+  <!-- Question mark centered -->
+  <g transform="translate(100, 100)">
+
+    <!-- Main question mark curve -->
+    <!-- Starts from upper-left, curves right and down, then drops straight -->
+    <path d="M -8 -55
+             Q -38 -52 -40 -28
+             Q -42 0 -20 18
+             Q -4 30 2 38
+             L 2 52"
+          fill="none" stroke="#1a1a1a" stroke-width="7" stroke-linecap="round"/>
+
+    <!-- Inner curve (the hole of the question mark) -->
+    <path d="M -8 -28
+             Q -20 -18 -14 -8
+             Q -8 2 2 8"
+          fill="none" stroke="#1a1a1a" stroke-width="7" stroke-linecap="round"/>
+
+    <!-- Bottom dot -->
+    <circle cx="2" cy="72" r="7" fill="#1a1a1a"/>
+
+  </g>
+</svg>
