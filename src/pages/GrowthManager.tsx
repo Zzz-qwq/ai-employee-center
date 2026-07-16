@@ -505,6 +505,9 @@ export default function GrowthManager({ onHome }: { onHome: () => void }) {
   // ── Diagnosis animation ──
   useEffect(() => {
     if (step !== 3) return;
+    // If diagnosis was previously completed and user is just navigating back,
+    // keep the results — don't re-run animation or recompute
+    if (diagnosisComplete) return;
     // Save snapshot on first entry to diagnosis
     if (checklistProgress === 0) { saveStepSnapshot(); setWorkflowNeedsRecompute(false); }
     if (checklistProgress >= workflowItems.length) {
@@ -528,10 +531,14 @@ export default function GrowthManager({ onHome }: { onHome: () => void }) {
     const delay = DIAG_DELAYS[checklistProgress] ?? 1000;
     const timer = setTimeout(() => setChecklistProgress((prev) => prev + 1), delay);
     return () => clearTimeout(timer);
-  }, [step, checklistProgress]);
+  }, [step, checklistProgress, diagnosisComplete]);
 
   useEffect(() => {
-    if (step !== 3) { setChecklistProgress(0); setDiagnosisComplete(false); setExpandedStage(null); }
+    if (step !== 3) {
+      // Only reset expanded state, keep diagnosisComplete and checklistProgress
+      // so results are preserved when navigating back to step 3
+      setExpandedStage(null);
+    }
   }, [step]);
 
   // ── Auto-fill target users based on scene ──
@@ -701,6 +708,11 @@ export default function GrowthManager({ onHome }: { onHome: () => void }) {
           setVerificationResults({}); setVerifyingStage(null);
           setExpandedStage(null);
           setShowDecisionBasis(false); setShowDecisionDetails(false); setShowFullFunnel(false);
+          // Clear downstream results since data changed
+          setSelectedOpportunity(null);
+          setExperimentPlan(null);
+          setAiDecision(null);
+          setActionItems([]);
         } else {
           restoreStepSnapshot(); // Restore original values, keep old results
           return;
