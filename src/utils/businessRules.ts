@@ -1,6 +1,6 @@
 import { FeedbackRow, OperationRow, RuleResult } from '../types';
 
-const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0, 0);
+const sum = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
 const avg = (arr: number[]) => arr.length ? sum(arr) / arr.length : 0;
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 const fmt = (n: number) => Math.round(n).toLocaleString();

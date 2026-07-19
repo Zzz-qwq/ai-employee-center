@@ -144,7 +144,7 @@ export function generateFunnelCSV(config: MockConfig): string {
     const tf = trendFactor(day, config.period);
 
     // Normal rates (with noise)
-    const clickRate = randF(0.07, 0.09, 3);
+    let clickRate = randF(0.07, 0.09, 3);
     let detailRate = randF(0.65, 0.75, 3);
     let cartRate = randF(0.58, 0.68, 3);
     let orderRate = randF(0.55, 0.70, 3);
