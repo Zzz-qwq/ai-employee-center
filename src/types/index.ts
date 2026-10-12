@@ -50,3 +50,46 @@ export interface FollowUpMessage {
   question: string;
   answer: string;
 }
+
+// ── UR (User Researcher) types ──
+export type URTaskType = '用户反馈分析' | '客服记录分析' | '评价情感分析' | '产品体验分析' | 'NPS调研分析' | '自定义分析';
+export type URStep = 1 | 2 | 3 | 4;
+
+export interface URFeedbackRow {
+  反馈内容: string;
+  情绪?: string;
+  类别?: string;
+  来源?: string;
+  [key: string]: string | undefined;
+}
+
+export interface SentimentResult {
+  positive: number;
+  neutral: number;
+  negative: number;
+  disputed: number;
+  total: number;
+}
+
+export interface URKeyword {
+  word: string;
+  count: number;
+  sentiment: '正面' | '中性' | '负面';
+}
+
+export interface URTheme {
+  name: string;
+  count: number;
+  severity: '高' | '中' | '低';
+  keywords: string[];
+  quotes: string[];
+  suggestion: string;
+  needsManualReview?: boolean;
+}
+
+export interface InsightResult {
+  sentiment: SentimentResult;
+  keywords: URKeyword[];
+  themes: URTheme[];
+  summary: string;
+}

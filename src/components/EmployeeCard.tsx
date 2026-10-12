@@ -4,6 +4,8 @@ interface Props {
   name: string;
   enName: string;
   role: string;
+  /** 结果导向的一句话描述（宣传「帮你做什么」，不宣传流程步数） */
+  desc?: string;
   status: string;
   abilities: string[];
   avatarSrc: string;
@@ -13,7 +15,7 @@ interface Props {
 }
 
 export default function EmployeeCard({
-  name, enName, role, status, abilities, avatarSrc, hoverLine, enabled, onClick,
+  name, enName, role, desc, status, abilities, avatarSrc, hoverLine, enabled, onClick,
 }: Props) {
   return (
     <button
@@ -49,6 +51,7 @@ export default function EmployeeCard({
         <h3 className="text-base font-semibold text-zinc-800">{name}</h3>
         <p className="mt-0.5 text-[11px] text-zinc-400">{enName}</p>
         <p className="mt-0.5 text-sm text-zinc-500">{role}</p>
+        {desc && <p className="mt-2 text-xs leading-relaxed text-zinc-500">{desc}</p>}
       </div>
 
       {/* Abilities */}
