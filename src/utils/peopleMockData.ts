@@ -1,7 +1,7 @@
 import { downloadCSV } from './mockDataGenerator';
 
 /**
- * 人效分析的合成样例数据。
+ * 人力投入与效率分析的合成样例数据。
  *
  * ⚠️ 人名、部门、金额全部为虚构。真实的工作日报属于使用者所在公司，
  * 只在本地浏览器里解析，绝不进入仓库、不进入构建产物。
@@ -204,13 +204,13 @@ export const PEOPLE_SAMPLES: { id: PeopleSampleId; label: string; desc: string; 
     id: 'worklog',
     label: '工时日报样例',
     desc: '12 人 · 约 680 条工作记录。结构对齐真实工作日报，**不含**薪资与部门字段——用来演示「缺字段就如实跳过」',
-    filename: '人效分析_工时日报样例（虚拟）.csv',
+    filename: '人力投入与效率分析_工时日报样例（虚拟）.csv',
   },
   {
     id: 'dept',
     label: '部门经营样例',
     desc: '6 个部门 · 24 人 · 5 个月。含部门、工时、完成数量、销售额、工资——四个分析模块全部点亮',
-    filename: '人效分析_部门经营样例（虚拟）.csv',
+    filename: '人力投入与效率分析_部门经营样例（虚拟）.csv',
   },
 ];
 

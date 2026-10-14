@@ -479,7 +479,7 @@ function runPeopleRules(recs: PeopleRecord[], perEmp: EmpAgg[], groups: GroupAgg
         if (worstDept && worstDept.share >= 0.5 && teamRateMed > 0 && worstDept.rate < teamRateMed) {
           out.push({
             ruleId: 'PE11',
-            ruleName: '部门成本占比异常：高成本部门的人效低于团队中位数',
+            ruleName: '部门成本占比异常：高成本部门的单位产出低于团队中位数',
             severity: 'medium',
             triggerCondition: '某部门人工成本占比 ≥ 50%，且该部门人均产出率 < 团队中位数',
             evidence: [
@@ -514,11 +514,11 @@ function runPeopleRules(recs: PeopleRecord[], perEmp: EmpAgg[], groups: GroupAgg
         : '未检测到产出数量字段，本次以「一条记录 = 一个已完成工作项」近似',
     ],
     conclusion: missing.length
-      ? `缺少 ${missing.join('、')} 数据，因此本报告无法回答成本与人效的金额口径问题。这不是分析能力的上限，而是数据边界的限制——补齐字段后同一套引擎会自动启用对应模块。`
+      ? `缺少 ${missing.join('、')} 数据，因此本报告无法回答成本与效率的金额口径问题。这不是分析能力的上限，而是数据边界的限制——补齐字段后同一套引擎会自动启用对应模块。`
       : '本次分析覆盖了投入、产出、成本三个维度，人效比可采用经营口径。',
     suggestion: missing.length
-      ? `如需更完整的人效分析，建议补充：${missing.map(m => `${m}字段`).join('、')}。补齐后无需改代码，重新上传即可。`
-      : '建议按月持续上传同一口径的数据，以观察人效指标的趋势而非单点快照。',
+      ? `如需更完整的效率分析，建议补充：${missing.map(m => `${m}字段`).join('、')}。补齐后无需改代码，重新上传即可。`
+      : '建议按月持续上传同一口径的数据，以观察效率指标的趋势而非单点快照。',
     verify: missing.length ? [`补充 ${missing.join('、')} 字段后可启用的分析维度`] : ['单点数据无法体现趋势，建议按周期对比'],
   });
 
@@ -1102,7 +1102,7 @@ export function runPeopleAnalysis(input: PeopleAnalysisInput): PeopleAnalysis | 
     .map(m => ({ dimension: m.moduleId === 'compensation' ? '薪资成本分析' : m.moduleId, reason: m.reason }));
 
   const base: Omit<PeopleAnalysis, 'summary' | 'executive'> = {
-    task: '人效分析',
+    task: '人力投入与效率分析',
     rowCount: recs.length,
     validRecordCount: recs.filter(r => r.hours !== null).length,
     employeeCount: perEmp.filter(e => e.employee !== '（未填写）').length,

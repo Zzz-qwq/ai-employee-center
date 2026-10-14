@@ -1,4 +1,4 @@
-export type TaskType = '人效分析' | '618 大促复盘' | '双11 活动复盘' | '会员日活动复盘' | '新品上线复盘' | '渠道效果分析' | '自定义分析';
+export type TaskType = '人力投入与效率分析' | '618 大促复盘' | '双11 活动复盘' | '会员日活动复盘' | '新品上线复盘' | '渠道效果分析' | '自定义分析';
 export type Step = 1|2|3|4|5|6|7|8;
 export type Severity = 'high' | 'medium' | 'low';
 
@@ -94,7 +94,7 @@ export interface InsightResult {
   summary: string;
 }
 
-// ── People Efficiency (人效分析) types ──
+// ── People Efficiency（人力投入与效率分析）types ──
 
 /** 字段理解层的规范字段：不管原始表头叫什么，最终都归到这 11 类之一 */
 export type CanonicalField =
@@ -208,7 +208,7 @@ export interface ExecutiveSummary {
 }
 
 export interface PeopleAnalysis {
-  task: '人效分析';
+  task: '人力投入与效率分析';
   rowCount: number;
   validRecordCount: number;
   employeeCount: number;

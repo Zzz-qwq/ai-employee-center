@@ -16,7 +16,7 @@ import { generatePeopleSample, PEOPLE_SAMPLES, PeopleSampleId } from '../utils/p
 import { CanonicalField, Diagnosis, FeedbackRow, FieldMapping, FollowUpMessage, OperationRow, PeopleAnalysis, RuleResult, TaskType, Step } from '../types';
 
 const tasks: { label: TaskType; desc: string }[] = [
-  { label: '人效分析', desc: '从工时、产出与成本数据里，看人力投入产出效率与异常' },
+  { label: '人力投入与效率分析', desc: '从工时、产出与成本数据里，看人力投入结构与效率信号' },
   { label: '双11 活动复盘', desc: '分析大促期间的运营表现与异常指标' },
   { label: '会员日活动复盘', desc: '评估会员专属活动的转化与反馈' },
   { label: '新品上线复盘', desc: '诊断新品上线的曝光、点击与转化链路' },
@@ -24,22 +24,22 @@ const tasks: { label: TaskType; desc: string }[] = [
   { label: '自定义分析', desc: '输入你想让 AI 分析的具体问题' },
 ];
 
-// ── 人效分析（People Efficiency）专用文案，模块级常量保证引用稳定 ──
-const PEOPLE_STEP_LABELS = ['选择任务', '分析问题', '上传工时数据', '确认目标', 'AI 扫描', '人效诊断', '继续追问', '分析报告'];
+// ── 人力投入与效率分析（People Efficiency）专用文案，模块级常量保证引用稳定 ──
+const PEOPLE_STEP_LABELS = ['选择任务', '分析问题', '上传工时数据', '确认目标', 'AI 扫描', '效率诊断', '继续追问', '分析报告'];
 const PEOPLE_SCAN_STEPS = [
   '正在解析工时数据',
   '正在识别字段结构',
-  '正在计算人效指标',
+  '正在计算效率指标',
   '正在检测超时与异常',
   '正在运行风险规则',
-  '正在生成人效诊断',
+  '正在生成效率诊断',
 ];
 const PEOPLE_QUICK_QUESTIONS = [
-  '团队整体人效如何？',
+  '团队整体效率如何？',
   '哪些人超时最严重？',
   '工作量是否过度集中？',
   '会议沟通占比是否偏高？',
-  '谁的单位产出最慢？',
+  '产出效率的分布如何？',
   '请帮我生成面向老板汇报的版本',
 ];
 
@@ -65,7 +65,7 @@ const customExamples = [
 
 const pct = (n: number) => `${(n * 100).toFixed(1)}%`;
 
-// ── 人效分析的追问回答：全部从已算出的指标/规则里取数，不凭空生成 ──
+// ── 人力投入与效率分析的追问回答：全部从已算出的指标/规则里取数，不凭空生成 ──
 const metricOf = (a: PeopleAnalysis, moduleId: string, key: string) =>
   a.modules.find(m => m.moduleId === moduleId)?.metrics.find(x => x.key === key);
 
@@ -77,7 +77,6 @@ function answerPeople(q: string, a: PeopleAnalysis): string {
       `**${r.ruleName}**\n${r.evidence.map(e => `· ${e}`).join('\n')}\n\n${r.conclusion}\n\n建议：${r.suggestion}`,
     ).join('\n\n');
   };
-  const pass = metricOf(a, 'efficiency', 'passRate');
   const rate = metricOf(a, 'efficiency', 'rate');
   const meet = metricOf(a, 'risk', 'meetingShare');
 
@@ -102,12 +101,13 @@ function answerPeople(q: string, a: PeopleAnalysis): string {
   }
   if (q.includes('老板') || q.includes('汇报')) {
     const top = a.rules.filter(r => r.ruleId !== 'PE09').slice(0, 3);
-    return `## 人效分析摘要\n\n**数据规模**：${a.rowCount.toLocaleString()} 条记录 / ${a.employeeCount} 人\n**人效口径**：${a.efficiency.name}（${a.efficiency.formula}）\n**主指标**：标准工时达标率 ${pass?.formatted ?? '—'}\n**副指标**：工作项产出率 ${rate?.formatted ?? '—'} 项/小时\n\n**核心发现**：\n${top.map((r, i) => `${i + 1}. ${r.ruleName}——${r.evidence[0] ?? ''}`).join('\n')}\n\n**建议动作**：\n${top.map((r, i) => `${i + 1}. ${r.suggestion.split('\n')[0].replace(/^\d+）/, '')}`).join('\n')}\n\n> 以上结论来自本地规则引擎，每一条都能追溯到上方列出的原始数字。`;
+    // 面向老板的版本直接复用管理摘要——它已经是团队级、不点名个人的措辞
+    return `## 人力投入与效率分析摘要\n\n${a.executive.summary}\n\n**核心发现**\n${a.executive.findings.map(f => `- ${f}`).join('\n')}\n\n**风险提示**\n${a.executive.risks.map(r => `- ${r}`).join('\n')}\n\n**下一步建议**\n${top.map((r, i) => `${i + 1}. ${r.suggestion.split('\n')[0].replace(/^\d+）/, '')}`).join('\n')}\n\n> 本报告由本地规则引擎生成，未接入大模型；只反映工作投入与工作模式，不构成对个人的绩效评价。`;
   }
   const first = a.rules.find(r => r.ruleId !== 'PE09');
   return first
-    ? `基于当前数据，最值得先看的是：${first.ruleName}。${first.conclusion}\n\n命中的规则有：${a.rules.map(r => r.ruleId).join('、')}。你可以追问「超时」「工作量集中」「会议占比」「谁产出最慢」等具体维度。`
-    : `当前数据没有命中任何异常规则，团队各项人效指标都在合理区间。可以追问具体维度做进一步下钻。`;
+    ? `基于当前数据，最值得先看的是：${first.ruleName}。${first.conclusion}\n\n命中的规则有：${a.rules.map(r => r.ruleId).join('、')}。你可以追问「超时」「工作量集中」「会议占比」「产出分布」等具体维度。`
+    : `当前数据没有命中任何异常规则，团队各项效率指标都在合理区间。可以追问具体维度做进一步下钻。`;
 }
 
 // 根据业务规则 + 用户反馈数据，构建带证据分级的原因分析
@@ -253,9 +253,9 @@ function buildDiagnoses(rules: RuleResult[], feedbacks: FeedbackRow[]): Diagnosi
 export default function BusinessAnalyst({ onHome }: { onHome: () => void }) {
   // ── Core flow state ──
   const [step, setStep] = useState<Step>(1);
-  const [task, setTask] = useState<TaskType>('人效分析');
+  const [task, setTask] = useState<TaskType>('人力投入与效率分析');
   const [customQuestion, setCustomQuestion] = useState('');
-  const isPeople = task === '人效分析';
+  const isPeople = task === '人力投入与效率分析';
 
   // ── Data state ──
   const [ops, setOps] = useState<OperationRow[]>([]);
@@ -275,7 +275,7 @@ export default function BusinessAnalyst({ onHome }: { onHome: () => void }) {
   // ── Report state (仅由「生成报告」按钮触发) ──
   const [report, setReport] = useState('');
 
-  // ── 人效分析（People Efficiency）状态 ──
+  // ── 人力投入与效率分析（People Efficiency）状态 ──
   const [peopleRows, setPeopleRows] = useState<Record<string, string>[]>([]);
   const [peopleHeaders, setPeopleHeaders] = useState<string[]>([]);
   const [peopleFile, setPeopleFile] = useState('');
@@ -318,7 +318,7 @@ export default function BusinessAnalyst({ onHome }: { onHome: () => void }) {
     setStep(5);
 
     if (isPeople) {
-      // 人效分析走独立的 Skill：字段识别 → 指标计算 → 规则诊断
+      // 人力投入与效率分析走独立的 Skill：字段识别 → 指标计算 → 规则诊断
       const pa = runPeopleAnalysis({ rows: peopleRows, headers: peopleHeaders });
       setPeopleResult(pa);
       setRules(pa?.rules ?? []);
@@ -346,7 +346,7 @@ export default function BusinessAnalyst({ onHome }: { onHome: () => void }) {
 
     // 模拟 AI 追问分析（1.5-2.5s 延迟）
     setTimeout(() => {
-      // 人效分析走自己的回答分支，618 那套关键词逻辑原样保留
+      // 人力投入与效率分析走自己的回答分支，618 那套关键词逻辑原样保留
       if (isPeople && peopleResult) {
         setFollowUpMessages(prev => [...prev, { question, answer: answerPeople(question, peopleResult) }]);
         setIsFollowUpLoading(false);
@@ -421,7 +421,7 @@ export default function BusinessAnalyst({ onHome }: { onHome: () => void }) {
   const canNext = () => {
     if (step === 1) return true;
     if (step === 2) return customQuestion.trim().length > 0;
-    // 人效分析只需要一份数据表，不再要求"运营数据 + 用户反馈"两份
+    // 人力投入与效率分析只需要一份数据表，不再要求"运营数据 + 用户反馈"两份
     if (step === 3) return isPeople ? peopleRows.length > 0 : (ops.length > 0 && fbs.length > 0);
     return false;
   };
@@ -456,7 +456,7 @@ export default function BusinessAnalyst({ onHome }: { onHome: () => void }) {
         {step === 1 && (
           <section className="mt-5 rounded-2xl bg-white p-6 md:p-8 border border-[#E5E5E5]">
             <h2 className="text-lg font-bold text-[#111111]">选择分析任务</h2>
-            <p className="mt-1 text-sm text-[#666666]">支持人效分析与多种活动复盘场景，请选择你需要的分析类型</p>
+            <p className="mt-1 text-sm text-[#666666]">支持人力投入与效率分析、多种活动复盘场景，请选择你需要的分析类型</p>
             <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {tasks.map((t) => (
                 <button
@@ -533,7 +533,7 @@ export default function BusinessAnalyst({ onHome }: { onHome: () => void }) {
                   <span className="text-[#999999]">文件在浏览器本地解析，不会上传到任何服务器。</span>
                 </p>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
-                  <FileUpload label="上传人效数据 CSV" onFile={uploadPeople} fileName={peopleFile} />
+                  <FileUpload label="上传人力数据 CSV" onFile={uploadPeople} fileName={peopleFile} />
                   <div className="rounded-2xl border border-dashed border-[#E5E5E5] bg-[#FAFAFA] p-5">
                     <p className="text-sm font-semibold text-[#111111]">没有现成数据？</p>
                     <p className="mt-1 text-xs leading-relaxed text-[#666666]">
@@ -700,7 +700,7 @@ export default function BusinessAnalyst({ onHome }: { onHome: () => void }) {
           <div className="mt-5">
             <AnalysisTimeline
               steps={isPeople ? PEOPLE_SCAN_STEPS : undefined}
-              agentName={isPeople ? 'AI Business Analyst · 人效分析' : undefined}
+              agentName={isPeople ? 'AI Business Analyst · 人力投入与效率分析' : undefined}
             />
           </div>
         )}
@@ -718,7 +718,7 @@ export default function BusinessAnalyst({ onHome }: { onHome: () => void }) {
               </button>
             </div>
 
-            {/* 人效分析先给指标总览，再给诊断卡 */}
+            {/* 人力投入与效率分析先给指标总览，再给诊断卡 */}
             {isPeople && peopleResult && (
               <div className="mb-5">
                 <MetricsPanel analysis={peopleResult} />
@@ -743,13 +743,13 @@ export default function BusinessAnalyst({ onHome }: { onHome: () => void }) {
               isLoading={isFollowUpLoading}
               onAsk={handleFollowUpQuestion}
               quickQuestions={isPeople ? PEOPLE_QUICK_QUESTIONS : undefined}
-              agentName={isPeople ? 'AI Business Analyst · 人效分析' : undefined}
+              agentName={isPeople ? 'AI Business Analyst · 人力投入与效率分析' : undefined}
             />
             <button
               onClick={handleGenerateReport}
               className="rounded-xl bg-[#111111] px-6 py-3 text-sm font-semibold text-white hover:bg-[#333333] transition-colors"
             >
-              {isPeople ? '生成人效分析报告' : '生成活动复盘报告'}
+              {isPeople ? '生成效率分析报告' : '生成活动复盘报告'}
             </button>
           </section>
         )}

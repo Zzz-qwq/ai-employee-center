@@ -57,7 +57,7 @@ export function routeSkills(
       moduleId: 'efficiency',
       active: entity && hasEfficiency,
       reason: entity && hasEfficiency
-        ? (emp ? `已识别到可计算口径的字段（${eff.name}）` : `未识别到人员列，改用分组维度计算人效（${eff.name}）`)
+        ? (emp ? `已识别到可计算口径的字段（${eff.name}）` : `未识别到人员列，改用分组维度计算效率（${eff.name}）`)
         : '当前字段组合无法构成任何一种人效比口径',
     },
     {
