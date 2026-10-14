@@ -17,10 +17,21 @@ interface Props {
   messages: FollowUpMessage[];
   isLoading: boolean;
   onAsk: (question: string) => void;
+  quickQuestions?: string[];
+  agentName?: string;
 }
 
-export default function FollowUpChat({ task, diagnoses, messages, isLoading, onAsk }: Props) {
+export default function FollowUpChat({
+  task,
+  diagnoses,
+  messages,
+  isLoading,
+  onAsk,
+  quickQuestions,
+  agentName = 'AI Business Analyst',
+}: Props) {
   const [input, setInput] = useState('');
+  const questions = quickQuestions ?? defaultQuestions;
 
   const handleSend = () => {
     if (!input.trim() || isLoading) return;
@@ -35,12 +46,12 @@ export default function FollowUpChat({ task, diagnoses, messages, isLoading, onA
 
   return (
     <div className="rounded-2xl bg-white p-6 border border-[#E5E5E5]">
-      <h3 className="text-lg font-bold text-[#111111]">继续追问 AI Business Analyst</h3>
+      <h3 className="text-lg font-bold text-[#111111]">继续追问 {agentName}</h3>
       <p className="mt-1 text-sm text-[#666666]">基于当前诊断结果，你可以继续深入分析</p>
 
       {/* Quick questions */}
       <div className="mt-4 flex flex-wrap gap-2">
-        {defaultQuestions.map((x) => (
+        {questions.map((x) => (
           <button
             key={x}
             onClick={() => handleQuickAsk(x)}
@@ -75,7 +86,7 @@ export default function FollowUpChat({ task, diagnoses, messages, isLoading, onA
       {isLoading && (
         <div className="mt-5 flex items-center gap-3 rounded-xl bg-[#F5F5F5] p-4 text-sm text-[#111111]">
           <Loader2 size={16} className="animate-spin" />
-          AI Business Analyst 正在继续分析…
+          {agentName} 正在继续分析…
         </div>
       )}
 

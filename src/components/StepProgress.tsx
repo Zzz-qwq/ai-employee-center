@@ -1,6 +1,7 @@
-const steps = ['选择任务', '分析问题', '上传数据', '确认目标', 'AI 扫描', '诊断结果', '继续追问', '复盘报告'];
+const defaultSteps = ['选择任务', '分析问题', '上传数据', '确认目标', 'AI 扫描', '诊断结果', '继续追问', '复盘报告'];
 
-export default function StepProgress({ current }: { current: number }) {
+export default function StepProgress({ current, labels }: { current: number; labels?: string[] }) {
+  const steps = labels ?? defaultSteps;
   return (
     <div className="flex flex-wrap items-center gap-0.5">
       {steps.map((s, i) => {

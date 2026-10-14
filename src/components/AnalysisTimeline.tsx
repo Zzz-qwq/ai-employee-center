@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
-const scanSteps = [
+const defaultScanSteps = [
   '正在读取运营数据',
   '正在识别核心指标',
   '正在检测异常波动',
@@ -10,22 +10,28 @@ const scanSteps = [
   '正在生成经营诊断',
 ];
 
-export default function AnalysisTimeline() {
+export default function AnalysisTimeline({ steps: stepsProp, agentName = 'AI Business Analyst' }: {
+  steps?: string[];
+  agentName?: string;
+}) {
+  const scanSteps = stepsProp ?? defaultScanSteps;
   const [done, setDone] = useState<number[]>([]);
 
+  // 依赖 scanSteps：调用方传的是模块级常量数组（引用稳定），不会反复重跑
   useEffect(() => {
+    setDone([]);
     const timers: ReturnType<typeof setTimeout>[] = [];
     scanSteps.forEach((_, i) => {
       timers.push(setTimeout(() => setDone((prev) => [...prev, i]), i * 420 + 200));
     });
     return () => timers.forEach(clearTimeout);
-  }, []);
+  }, [scanSteps]);
 
   return (
     <div className="rounded-2xl bg-white p-6 md:p-8 border border-[#E5E5E5]">
       <div className="flex items-center gap-3">
         <Loader2 className="animate-spin text-[#111111]" size={20} />
-        <h3 className="text-lg font-bold text-[#111111]">AI Business Analyst 正在工作</h3>
+        <h3 className="text-lg font-bold text-[#111111]">{agentName} 正在工作</h3>
       </div>
       <div className="mt-6 space-y-2">
         {scanSteps.map((x, i) => {
