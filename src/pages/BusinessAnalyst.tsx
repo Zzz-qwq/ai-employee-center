@@ -12,7 +12,7 @@ import { runBusinessRules, analyzeFeedback } from '../utils/businessRules';
 import { generateReport } from '../utils/reportGenerator';
 import { detectFields, headersOf } from '../utils/fieldMapper';
 import { runPeopleAnalysis, generatePeopleReport } from '../utils/peopleEngine';
-import { generatePeopleSample } from '../utils/peopleMockData';
+import { generatePeopleSample, PEOPLE_SAMPLES, PeopleSampleId } from '../utils/peopleMockData';
 import { CanonicalField, Diagnosis, FeedbackRow, FieldMapping, FollowUpMessage, OperationRow, PeopleAnalysis, RuleResult, TaskType, Step } from '../types';
 
 const tasks: { label: TaskType; desc: string }[] = [
@@ -307,8 +307,8 @@ export default function BusinessAnalyst({ onHome }: { onHome: () => void }) {
   const uploadPeople = async (file: File) => loadPeopleCsv(await file.text(), file.name);
 
   // 一键试用示例数据：面试官/访客不需要先下载任何文件
-  const usePeopleSample = () =>
-    loadPeopleCsv(generatePeopleSample('worklog'), '示例_工时日报样例（虚拟）.csv');
+  const usePeopleSample = (id: PeopleSampleId) =>
+    loadPeopleCsv(generatePeopleSample(id), `示例_${PEOPLE_SAMPLES.find(s => s.id === id)?.label ?? id}.csv`);
 
   // ═══════════════════════════════════════════
   // 主分析流程 — 仅由「开始智能诊断」按钮触发
@@ -534,17 +534,28 @@ export default function BusinessAnalyst({ onHome }: { onHome: () => void }) {
                 </p>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                   <FileUpload label="上传人效数据 CSV" onFile={uploadPeople} fileName={peopleFile} />
-                  <div className="rounded-2xl border border-dashed border-[#E5E5E5] bg-[#FAFAFA] p-5 flex flex-col justify-center">
+                  <div className="rounded-2xl border border-dashed border-[#E5E5E5] bg-[#FAFAFA] p-5">
                     <p className="text-sm font-semibold text-[#111111]">没有现成数据？</p>
                     <p className="mt-1 text-xs leading-relaxed text-[#666666]">
-                      用一份虚构的工时日报样例试跑全流程（12 人 · 约 680 条记录）
+                      用一份虚构样例试跑全流程，不需要下载任何文件
                     </p>
-                    <button
-                      onClick={usePeopleSample}
-                      className="mt-3 inline-flex w-fit items-center gap-1.5 rounded-lg border border-[#111111] bg-white px-3.5 py-2 text-xs font-semibold text-[#111111] hover:bg-[#F5F5F5] transition-colors"
-                    >
-                      <Sparkles size={13} /> 试用示例数据
-                    </button>
+                    <div className="mt-3 space-y-2">
+                      {PEOPLE_SAMPLES.map(s => (
+                        <button
+                          key={s.id}
+                          onClick={() => usePeopleSample(s.id)}
+                          className="flex w-full items-start gap-2 rounded-lg border border-[#111111] bg-white px-3.5 py-2.5 text-left hover:bg-[#F5F5F5] transition-colors"
+                        >
+                          <Sparkles size={13} className="mt-0.5 shrink-0 text-[#111111]" />
+                          <span>
+                            <span className="block text-xs font-semibold text-[#111111]">{s.label}</span>
+                            <span className="mt-0.5 block text-[11px] leading-snug text-[#666666]">
+                              {s.desc.replace(/\*\*/g, '')}
+                            </span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
