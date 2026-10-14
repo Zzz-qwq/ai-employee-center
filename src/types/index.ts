@@ -152,6 +152,10 @@ export interface PeopleMetric {
   value: number;
   unit: string;
   formatted: string;
+  /** 计算口径，写明算式，例如 `Σ[工作时长] ÷ 员工数量` */
+  formula?: string;
+  /** 数据来源字段（原始列名），让数字能追溯到表里哪一列 */
+  sourceField?: string;
   note?: string;
 }
 

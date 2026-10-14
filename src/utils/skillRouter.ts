@@ -12,10 +12,10 @@ export interface RouterDecision {
 const has = (fm: FieldMapping, f: CanonicalField) => fm.mapping[f] != null;
 
 const MODULE_NAMES: Record<PeopleModuleId, string> = {
-  productivity: '产出贡献',
-  efficiency: '人效指标',
-  risk: '人效异常诊断',
-  compensation: '薪资成本',
+  productivity: '人力投入与产出概览',
+  efficiency: '人效比',
+  risk: '分配与结构',
+  compensation: '薪资分配',
 };
 
 export const moduleNameOf = (id: PeopleModuleId) => MODULE_NAMES[id];

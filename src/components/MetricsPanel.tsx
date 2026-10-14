@@ -1,17 +1,24 @@
 import { AlertTriangle, Info } from 'lucide-react';
-import { PeopleAnalysis, PeopleModuleId, PeopleModuleResult } from '../types';
+import { PeopleAnalysis, PeopleMetric, PeopleModuleId, PeopleModuleResult } from '../types';
 
 const ORDER: PeopleModuleId[] = ['productivity', 'efficiency', 'risk', 'compensation'];
 
-function MetricTile({ label, formatted, unit, note }: { label: string; formatted: string; unit: string; note?: string }) {
+function MetricTile({ m, highlight }: { m: PeopleMetric; highlight?: boolean }) {
   return (
-    <div className="rounded-xl border border-[#E5E5E5] bg-white px-4 py-3">
-      <p className="text-xs text-[#666666]">{label}</p>
+    <div className={`rounded-xl border px-4 py-3 ${highlight ? 'border-[#111111] border-2 bg-white' : 'border-[#E5E5E5] bg-white'}`}>
+      <p className="text-xs text-[#666666]">{m.label}</p>
       <p className="mt-1 text-xl font-bold text-[#111111] tabular-nums">
-        {formatted}
-        {unit && unit !== '%' && <span className="ml-1 text-xs font-normal text-[#999999]">{unit}</span>}
+        {m.formatted}
+        {m.unit && m.unit !== '%' && <span className="ml-1 text-xs font-normal text-[#999999]">{m.unit}</span>}
       </p>
-      {note && <p className="mt-1 text-[11px] leading-snug text-[#999999]">{note}</p>}
+      {/* 算式与来源字段：让每个数字都能追溯到原始列 */}
+      {m.formula && (
+        <p className="mt-1.5 font-mono text-[11px] leading-snug text-[#666666] break-all">{m.formula}</p>
+      )}
+      {m.sourceField && (
+        <p className="mt-0.5 text-[11px] leading-snug text-[#999999] break-all">来源：{m.sourceField}</p>
+      )}
+      {m.note && <p className="mt-1 text-[11px] leading-snug text-[#999999]">{m.note}</p>}
     </div>
   );
 }
@@ -23,7 +30,7 @@ function ModuleCard({ m }: { m: PeopleModuleResult }) {
 
       <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
         {m.metrics.map(x => (
-          <MetricTile key={x.key} label={x.label} formatted={x.formatted} unit={x.unit} note={x.note} />
+          <MetricTile key={x.key} m={x} highlight={x.key === 'headline'} />
         ))}
       </div>
 

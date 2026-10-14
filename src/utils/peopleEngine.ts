@@ -1,5 +1,7 @@
 import {
+  CanonicalField,
   Diagnosis,
+  EfficiencyDefinition,
   FieldMapping,
   PeopleAnalysis,
   PeopleBar,
@@ -504,11 +506,104 @@ function runPeopleRules(recs: PeopleRecord[], perEmp: EmpAgg[], groups: GroupAgg
 // ═══════════════════════════════════════════
 // 指标模块
 // ═══════════════════════════════════════════
+
+/**
+ * 每个指标都要能追溯到原始列——报告里的数字必须敢拿给老板看。
+ * 这两个小工具负责把「来源字段」和「Σ[列名]」写进指标里。
+ */
+const srcLabel = (fm: FieldMapping, f: CanonicalField, fallback = '—') => fm.mapping[f] ?? fallback;
+const col = (fm: FieldMapping, f: CanonicalField) => fm.mapping[f];
+const sumOf = (fm: FieldMapping, f: CanonicalField) => (col(fm, f) ? `Σ[${col(fm, f)}]` : '—');
+const rowsOf = (fm: FieldMapping, f: CanonicalField) => (col(fm, f) ? `[${col(fm, f)}]` : '—');
+
+interface HeadlineTotals {
+  totalItems: number;
+  totalHours: number;
+  totalAmount: number;
+  totalComp: number;
+  passRate: number | null;
+}
+
+/**
+ * 顶部主指标「人效比」。口径由 Skill 路由根据可用字段选定，
+ * 这里负责算数值、写明公式与来源字段，并把**含义代入实际数值**——
+ * 光给一个 3.2 没人知道意味着什么，「每投入 1 元人工成本产生 3.2 元收入」才有人看得懂。
+ */
+function buildHeadline(fm: FieldMapping, eff: EfficiencyDefinition, t: HeadlineTotals): PeopleMetric | null {
+  const base = { key: 'headline', label: `人效比 · ${eff.name}` };
+
+  const mk = (value: number, unit: string, formatted: string, formula: string, sourceField: string, note: string) =>
+    ({ ...base, value, unit, formatted, formula, sourceField, note });
+
+  switch (eff.name) {
+    case '金额型人效比':
+      if (!(t.totalComp > 0 && t.totalAmount > 0)) return null;
+      return mk(
+        safeDiv(t.totalAmount, t.totalComp), '元/元', f2(safeDiv(t.totalAmount, t.totalComp)),
+        `${sumOf(fm, 'outputAmount')} ÷ ${sumOf(fm, 'compensation')}`,
+        `${srcLabel(fm, 'outputAmount')} ÷ ${srcLabel(fm, 'compensation')}`,
+        `每投入 1 元人工成本，产生 ${f2(safeDiv(t.totalAmount, t.totalComp))} 元收入`,
+      );
+    case '时均产出':
+      if (!(t.totalHours > 0 && t.totalAmount > 0)) return null;
+      return mk(
+        safeDiv(t.totalAmount, t.totalHours), '元/小时', f1(safeDiv(t.totalAmount, t.totalHours)),
+        `${sumOf(fm, 'outputAmount')} ÷ ${sumOf(fm, 'hours')}`,
+        `${srcLabel(fm, 'outputAmount')} ÷ ${srcLabel(fm, 'hours')}`,
+        `每投入 1 小时，产出 ${f1(safeDiv(t.totalAmount, t.totalHours))} 元`,
+      );
+    case '工作项产出率':
+      if (!(t.totalHours > 0 && t.totalItems > 0)) return null;
+      return mk(
+        safeDiv(t.totalItems, t.totalHours), '项/小时', f3(safeDiv(t.totalItems, t.totalHours)),
+        `工作项总数 ÷ ${sumOf(fm, 'hours')}`,
+        `${col(fm, 'outputQuantity') ?? '记录条数'} ÷ ${srcLabel(fm, 'hours')}`,
+        `每投入 1 小时，完成 ${f3(safeDiv(t.totalItems, t.totalHours))} 个工作项`,
+      );
+    case '单位人工成本产出':
+      if (!(t.totalComp > 0 && t.totalItems > 0)) return null;
+      return mk(
+        safeDiv(t.totalItems, t.totalComp), '项/元', f3(safeDiv(t.totalItems, t.totalComp)),
+        `工作项总数 ÷ ${sumOf(fm, 'compensation')}`,
+        `${col(fm, 'outputQuantity') ?? '记录条数'} ÷ ${srcLabel(fm, 'compensation')}`,
+        `每投入 1 元人工成本，完成 ${f3(safeDiv(t.totalItems, t.totalComp))} 个工作项`,
+      );
+    case '标准工时达标率':
+      if (t.passRate === null) return null;
+      return mk(
+        t.passRate, '%', pctS(t.passRate),
+        '未超出标准时长的记录数 ÷ 有超时标注的记录数',
+        `${srcLabel(fm, 'overtimeFlag', srcLabel(fm, 'standardHours'))} + ${srcLabel(fm, 'hours')}`,
+        `每 100 条记录中有 ${(t.passRate * 100).toFixed(1)} 条落在标准工时区间内。该口径评价的是排期与工时估算的准确性，不代表业务贡献。`,
+      );
+    default:
+      // 「工时结构分析」没有单一比率，不硬凑一个数出来
+      return null;
+  }
+}
+
+/** 分布型条形图：宽度按占总量比例，而不是相对最大值 */
+const toShareBars = (
+  rows: { label: string; value: number }[],
+  total: number,
+  limit = 8,
+): PeopleBar[] =>
+  rows
+    .sort((a, b) => b.value - a.value)
+    .slice(0, limit)
+    .map(r => ({
+      label: r.label,
+      value: r.value,
+      formatted: total > 0 ? pctS(r.value / total) : '—',
+      ratio: total > 0 ? r.value / total : 0,
+    }));
+
 function buildModules(
   recs: PeopleRecord[],
   perEmp: EmpAgg[],
   groups: GroupAgg[],
   fm: FieldMapping,
+  eff: EfficiencyDefinition,
   groupField: string | null,
   groupSource: string,
   activeIds: Set<PeopleModuleId>,
@@ -532,137 +627,319 @@ function buildModules(
 
   const mods: PeopleModuleResult[] = [];
 
-  // ── 1. 人力投入与产出 ──
+  // ── 1. 人力投入与产出概览 ──
+  const empUnit = entityIsFallback ? '组' : '人';
+  const hasHours = !!col(fm, 'hours');
+  /**
+   * 「工作项」这个概念只有在两种情况下成立：
+   *   ① 表里有独立的产出数量列；或
+   *   ② 是一张任务流水表（每行一条任务，因此每行都有工时）。
+   * 部门成本/收入这类「人 × 周期」汇总表两个都没有——那里一行是一个部门，
+   * 把它当成一个"工作项"会算出「每个部门占 20%」这种毫无意义的结论，所以直接不算。
+   */
+  const hasItems = !!col(fm, 'outputQuantity') || hasHours;
+  const topGroup = groups[0];
+
+  // 没有工时列时，投入分布退回按工作项看——绝不输出一列 0 或者一堆「—」
+  const valueOf = (x: { hours: number; items: number }) => (hasHours ? x.hours : x.items);
+  const valueTotal = hasHours ? totalHours : totalItems;
+  const valueWord = hasHours ? '工时' : '工作项';
+  const canShowDistribution = hasHours || hasItems;
+  const topGroupShare = topGroup && valueTotal > 0 ? safeDiv(valueOf(topGroup), valueTotal) : null;
+  const itemSource = col(fm, 'outputQuantity') ? sumOf(fm, 'outputQuantity') : '记录条数';
+  const itemNote = col(fm, 'outputQuantity') ? undefined : '一条记录 = 一个已完成工作项';
+
+  const prodMetrics: PeopleMetric[] = [
+    {
+      key: 'employees', label: entityIsFallback ? '分组数' : '员工数量', value: perEmp.length,
+      unit: empUnit, formatted: `${perEmp.length}`,
+      formula: `按「${srcLabel(fm, 'employee', '分组维度')}」去重计数`,
+      sourceField: srcLabel(fm, 'employee', srcLabel(fm, 'department', '—')),
+      note: entityIsFallback ? '表中无人员列，按分组维度统计' : undefined,
+    },
+    {
+      key: 'records', label: '记录条数', value: recs.length, unit: '条', formatted: fmt(recs.length),
+      formula: '数据表中的有效数据行数', sourceField: '整表',
+    },
+  ];
+  if (hasHours) {
+    prodMetrics.push(
+      {
+        key: 'hours', label: '总工时', value: totalHours, unit: '小时', formatted: f1(totalHours),
+        formula: sumOf(fm, 'hours'), sourceField: srcLabel(fm, 'hours'),
+      },
+      {
+        key: 'hoursPerEmp', label: entityIsFallback ? '组均工时' : '人均工时',
+        value: safeDiv(totalHours, perEmp.length), unit: `小时/${empUnit}`,
+        formatted: f1(safeDiv(totalHours, perEmp.length)),
+        formula: `总工时 ÷ ${entityIsFallback ? '分组数' : '员工数量'}`,
+        sourceField: srcLabel(fm, 'hours'),
+        note: col(fm, 'outputQuantity') ? '含表内全部周期的累计值' : undefined,
+      },
+    );
+  }
+  if (hasItems) {
+    prodMetrics.push(
+      {
+        key: 'items', label: '工作项总数', value: totalItems, unit: '项', formatted: fmt(totalItems),
+        formula: itemSource, sourceField: col(fm, 'outputQuantity') ?? '记录条数', note: itemNote,
+      },
+      {
+        key: 'itemsPerEmp', label: '人均工作项', value: safeDiv(totalItems, perEmp.length), unit: `项/${empUnit}`,
+        formatted: f1(safeDiv(totalItems, perEmp.length)),
+        formula: `工作项总数 ÷ ${entityIsFallback ? '分组数' : '员工数量'}`,
+        sourceField: col(fm, 'outputQuantity') ?? '记录条数',
+      },
+    );
+  }
+  if (topGroup && topGroupShare !== null && groups.length >= 2 && canShowDistribution) {
+    prodMetrics.push({
+      key: 'topGroupShare', label: `${valueWord}投入最高${entityIsFallback ? '分组' : '部门'}占比`,
+      value: topGroupShare, unit: '%', formatted: pctS(topGroupShare),
+      formula: `${topGroup.label} 的${valueWord} ÷ 总${valueWord}`,
+      sourceField: srcLabel(fm, groupSource === 'department' ? 'department' : 'category'),
+    });
+  }
+
   mods.push({
     moduleId: 'productivity',
-    moduleName: '人力投入与产出',
+    moduleName: '人力投入与产出概览',
     active: activeIds.has('productivity'),
-    metrics: activeIds.has('productivity') ? [
-      {
-        key: 'employees', label: entityIsFallback ? '分组数' : '参与人数', value: perEmp.length,
-        unit: entityIsFallback ? '组' : '人', formatted: `${perEmp.length}`,
-        note: entityIsFallback ? '表中无人员列，按分组维度统计' : undefined,
-      },
-      { key: 'records', label: '记录条数', value: recs.length, unit: '条', formatted: fmt(recs.length) },
-      { key: 'items', label: '工作项总数', value: totalItems, unit: '项', formatted: fmt(totalItems) },
-      { key: 'hours', label: '总工时', value: totalHours, unit: '小时', formatted: f1(totalHours) },
-      {
-        key: 'hoursPerEmp', label: '人均工时', value: safeDiv(totalHours, perEmp.length), unit: '小时/人',
-        formatted: f1(safeDiv(totalHours, perEmp.length)),
-        note: fm.mapping.outputQuantity ? '含表内全部周期的累计值' : undefined,
-      },
-      { key: 'itemsPerEmp', label: '人均工作项', value: safeDiv(totalItems, perEmp.length), unit: '项/人', formatted: f1(safeDiv(totalItems, perEmp.length)) },
-    ] : [],
-    bars: groups.length
-      ? toBars(groups.map(g => ({ label: g.label, value: g.hours, formatted: `${f1(g.hours)}h` })))
-      : toBars(perEmp.map(e => ({ label: e.employee, value: e.hours, formatted: `${f1(e.hours)}h` }))),
-    barsTitle: groups.length ? `工时分布 · ${groupNote}` : '工时分布 · 按人',
+    metrics: activeIds.has('productivity') ? prodMetrics : [],
+    bars: !canShowDistribution || valueTotal <= 0 ? []
+      : groups.length
+        ? toShareBars(groups.map(g => ({ label: g.label, value: valueOf(g) })), valueTotal)
+        : toShareBars(perEmp.map(e => ({ label: e.employee, value: hasHours ? e.hours : e.items })), valueTotal),
+    barsTitle: groups.length ? `${valueWord}投入分布 · ${groupNote}` : `${valueWord}投入分布 · 按人`,
     skippedReason: activeIds.has('productivity') ? undefined : '需要「人员」字段，且至少有工时或产出之一',
   });
 
-  // ── 2. 人效指标 ──
+  // ── 按分组汇总薪酬/金额/产出 ──
+  // 先按「人」拿到有效薪酬再归组，保证与个人口径一致（月薪不会被按行数重复累加）
+  const groupKeyOf = new Map<string, string>();
+  if (groupField) {
+    for (const r of recs) {
+      const key = r.employee || '（未填写）';
+      const g = (r.raw[groupField] ?? '').trim();
+      if (!groupKeyOf.has(key) && g) groupKeyOf.set(key, g);
+    }
+  }
+  const groupAgg = new Map<string, { comp: number; amount: number; items: number; hours: number }>();
+  if (groupField) {
+    for (const e of perEmp) {
+      const g = groupKeyOf.get(e.employee) ?? e.employee;
+      const cur = groupAgg.get(g) ?? { comp: 0, amount: 0, items: 0, hours: 0 };
+      cur.comp += e.compensation;
+      cur.amount += e.amount;
+      cur.items += e.items;
+      cur.hours += e.hours;
+      groupAgg.set(g, cur);
+    }
+  }
+
+  // ── 2. 人效比 ──
   const effMetrics: PeopleMetric[] = [];
+
+  // 顶部主指标：口径由 Skill 路由定，数值在这里算，**含义代入实际数值**
+  const headline = buildHeadline(fm, eff, { totalItems, totalHours, totalAmount, totalComp, passRate });
+  if (headline) effMetrics.push(headline);
+
   if (passRate !== null) {
     effMetrics.push({
-      key: 'passRate', label: '标准工时达标率（主）', value: passRate, unit: '%', formatted: pctS(passRate),
+      key: 'passRate', label: '标准工时达标率', value: passRate, unit: '%', formatted: pctS(passRate),
+      formula: `（有超时标注的记录数 − 超时记录数）÷ 有超时标注的记录数`,
+      sourceField: `${srcLabel(fm, 'overtimeFlag', srcLabel(fm, 'standardHours'))} + ${srcLabel(fm, 'hours')}`,
       note: derived
         ? '由「工作时长 > 标准工时上限」推导（本表无超时标注列）'
         : `${teamKnown - teamYes}/${teamKnown} 条未超时；另有 ${recs.length - teamKnown} 条未标注超时，未计入分母`,
     });
   }
-  effMetrics.push({
-    key: 'rate', label: '工作项产出率（副）', value: safeDiv(totalItems, totalHours), unit: '项/小时',
-    formatted: f3(safeDiv(totalItems, totalHours)),
-    note: fm.mapping.outputQuantity ? '工作项数取自「产出数量」字段' : '以「一条记录 = 一个工作项」近似',
-  });
+  if (hasHours) {
+    effMetrics.push({
+      key: 'rate', label: '工作项产出率', value: safeDiv(totalItems, totalHours), unit: '项/小时',
+      formatted: f3(safeDiv(totalItems, totalHours)),
+      formula: `工作项总数 ÷ 总工时`,
+      sourceField: `${col(fm, 'outputQuantity') ?? '记录条数'} ÷ ${srcLabel(fm, 'hours')}`,
+      note: col(fm, 'outputQuantity') ? '工作项数取自产出数量字段' : '以「一条记录 = 一个工作项」近似',
+    });
+  }
   if (overtimeRate !== null) {
-    effMetrics.push({ key: 'overtimeRate', label: '整体超时率', value: overtimeRate, unit: '%', formatted: pctS(overtimeRate) });
+    effMetrics.push({
+      key: 'overtimeRate', label: '整体超时率', value: overtimeRate, unit: '%', formatted: pctS(overtimeRate),
+      formula: '超时记录数 ÷ 有超时标注的记录数',
+      sourceField: srcLabel(fm, 'overtimeFlag', srcLabel(fm, 'standardHours')),
+    });
   }
   // 「单条工时」只在「一行 ≈ 一个工作项」时成立。有独立产出数量列时，
   // 一行往往是一个统计周期（人月/人周），这时这两个指标没有意义，直接不输出。
-  if (!fm.mapping.outputQuantity) {
+  if (hasHours && !col(fm, 'outputQuantity')) {
     const perItem = recs.map(r => r.hours ?? 0).filter(h => h > 0);
     effMetrics.push(
-      { key: 'avgPerItem', label: '单条平均工时', value: safeDiv(totalHours, totalItems), unit: '小时/项', formatted: f2(safeDiv(totalHours, totalItems)) },
-      { key: 'medianPerItem', label: '单条工时中位数', value: median(perItem), unit: '小时/项', formatted: f2(median(perItem)) },
+      {
+        key: 'avgPerItem', label: '单条平均工时', value: safeDiv(totalHours, totalItems), unit: '小时/项',
+        formatted: f2(safeDiv(totalHours, totalItems)),
+        formula: '总工时 ÷ 工作项总数', sourceField: `${srcLabel(fm, 'hours')} ÷ 记录条数`,
+      },
+      {
+        key: 'medianPerItem', label: '单条工时中位数', value: median(perItem), unit: '小时/项',
+        formatted: f2(median(perItem)),
+        formula: '所有记录工时排序后的中位数', sourceField: srcLabel(fm, 'hours'),
+      },
     );
   }
   if (totalAmount > 0 && totalHours > 0) {
-    effMetrics.push({ key: 'amountPerHour', label: '时均产出金额', value: safeDiv(totalAmount, totalHours), unit: '元/小时', formatted: f1(safeDiv(totalAmount, totalHours)) });
+    effMetrics.push({
+      key: 'amountPerHour', label: '时均产出金额', value: safeDiv(totalAmount, totalHours), unit: '元/小时',
+      formatted: f1(safeDiv(totalAmount, totalHours)),
+      formula: `${sumOf(fm, 'outputAmount')} ÷ ${sumOf(fm, 'hours')}`,
+      sourceField: `${srcLabel(fm, 'outputAmount')} ÷ ${srcLabel(fm, 'hours')}`,
+      note: `每投入 1 小时，产出 ${f1(safeDiv(totalAmount, totalHours))} 元`,
+    });
   }
-  if (totalAmount > 0 && totalComp > 0) {
-    effMetrics.push({ key: 'amountPerComp', label: '人效比（金额）', value: safeDiv(totalAmount, totalComp), unit: '元/元', formatted: f2(safeDiv(totalAmount, totalComp)) });
-  }
+
+  // 分组人效排名：有「产出金额 + 人工成本 + 分组维度」时最有信息量（部门表场景）
+  const groupEffBars = groupAgg.size >= 2 && totalAmount > 0 && totalComp > 0
+    ? toBars([...groupAgg.entries()]
+        .filter(([, v]) => v.comp > 0 && v.amount > 0)
+        .map(([label, v]) => ({
+          label, value: safeDiv(v.amount, v.comp),
+          formatted: `${f2(safeDiv(v.amount, v.comp))} 元/元`,
+        })))
+    : [];
+  const personRateBars = hasHours
+    ? toBars(perEmp.filter(e => e.hours > 0).map(e => ({ label: e.employee, value: e.rate, formatted: `${f3(e.rate)} 项/小时` })))
+    : [];
 
   mods.push({
     moduleId: 'efficiency',
-    moduleName: '人效指标',
+    moduleName: '人效比',
     active: activeIds.has('efficiency'),
     metrics: activeIds.has('efficiency') ? effMetrics : [],
-    bars: toBars(perEmp.filter(e => e.hours > 0).map(e => ({ label: e.employee, value: e.rate, formatted: `${f3(e.rate)} 项/小时` }))),
-    barsTitle: '个人产出率 · 项/小时',
-    skippedReason: activeIds.has('efficiency') ? undefined : '需要同时有「人员」和「工时」字段',
+    bars: groupEffBars.length ? groupEffBars : personRateBars,
+    barsTitle: groupEffBars.length
+      ? `分组人效排名 · 收入 ÷ 人工成本`
+      : personRateBars.length ? '个人产出率 · 项/小时' : '',
+    skippedReason: activeIds.has('efficiency') ? undefined : '当前字段组合无法构成任何一种人效比口径',
   });
 
   // ── 3. 分配与结构 ──
+  // 这里的每个指标都只在它依赖的字段真实存在时才输出，
+  // 缺字段时宁可不显示，也不给一个 0 —— 0 和「没数据」是两回事。
   const riskMetrics: PeopleMetric[] = [];
   if (perEmp.length >= 3) {
-    const top3Hours = sum(perEmp.slice(0, 3).map(e => e.hours));
-    riskMetrics.push({ key: 'hoursTop3', label: '前 3 名工时占比', value: safeDiv(top3Hours, totalHours), unit: '%', formatted: pctS(safeDiv(top3Hours, totalHours)) });
-    const top3Items = sum(perEmp.slice(0, 3).map(e => e.items));
-    riskMetrics.push({ key: 'itemsTop3', label: '前 3 名产出占比', value: safeDiv(top3Items, totalItems), unit: '%', formatted: pctS(safeDiv(top3Items, totalItems)) });
+    if (hasHours) {
+      const top3Hours = sum(perEmp.slice(0, 3).map(e => e.hours));
+      riskMetrics.push({
+        key: 'hoursTop3', label: '前 3 名工时占比', value: safeDiv(top3Hours, totalHours), unit: '%',
+        formatted: pctS(safeDiv(top3Hours, totalHours)),
+        formula: '工时最高的 3 人合计 ÷ 总工时', sourceField: srcLabel(fm, 'hours'),
+      });
+    }
+    if (hasItems) {
+      const top3Items = sum(perEmp.slice(0, 3).map(e => e.items));
+      riskMetrics.push({
+        key: 'itemsTop3', label: '前 3 名产出占比', value: safeDiv(top3Items, totalItems), unit: '%',
+        formatted: pctS(safeDiv(top3Items, totalItems)),
+        formula: '产出最高的 3 人合计 ÷ 工作项总数', sourceField: col(fm, 'outputQuantity') ?? '记录条数',
+      });
+    }
   }
-  riskMetrics.push({
-    key: 'hoursGini', label: '工时基尼系数', value: gini(perEmp.map(e => e.hours)), unit: '',
-    formatted: gini(perEmp.map(e => e.hours)).toFixed(2), note: '0 为完全平均，1 为全部集中在一人',
-  });
-  riskMetrics.push({
-    key: 'rateCV', label: '产出率差异 CV', value: cv(perEmp.filter(e => e.rate > 0).map(e => e.rate)), unit: '',
-    formatted: cv(perEmp.filter(e => e.rate > 0).map(e => e.rate)).toFixed(2), note: '变异系数，越大说明团队内部越不均衡',
-  });
-  const meetHours = sum(recs.filter(r => r.category && MEETING_RE.test(r.category)).map(r => r.hours ?? 0));
-  if (meetHours > 0) {
-    riskMetrics.push({ key: 'meetingShare', label: '会议沟通工时占比', value: safeDiv(meetHours, totalHours), unit: '%', formatted: pctS(safeDiv(meetHours, totalHours)) });
+  if (hasHours) {
+    riskMetrics.push({
+      key: 'hoursGini', label: '工时基尼系数', value: gini(perEmp.map(e => e.hours)), unit: '',
+      formatted: gini(perEmp.map(e => e.hours)).toFixed(2),
+      formula: '各人总工时的基尼系数', sourceField: srcLabel(fm, 'hours'),
+      note: '0 为完全平均，1 为全部集中在一个人身上',
+    });
+    riskMetrics.push({
+      key: 'rateCV', label: '产出率差异 CV', value: cv(perEmp.filter(e => e.rate > 0).map(e => e.rate)), unit: '',
+      formatted: cv(perEmp.filter(e => e.rate > 0).map(e => e.rate)).toFixed(2),
+      formula: '各人产出率的标准差 ÷ 均值',
+      sourceField: `${col(fm, 'outputQuantity') ?? '记录条数'} ÷ ${srcLabel(fm, 'hours')}`,
+      note: '变异系数，越大说明团队内部越不均衡',
+    });
+    const meetHours = sum(recs.filter(r => r.category && MEETING_RE.test(r.category)).map(r => r.hours ?? 0));
+    if (meetHours > 0) {
+      riskMetrics.push({
+        key: 'meetingShare', label: '会议沟通工时占比', value: safeDiv(meetHours, totalHours), unit: '%',
+        formatted: pctS(safeDiv(meetHours, totalHours)),
+        formula: '会议/沟通/协调/对齐类记录的工时 ÷ 总工时',
+        sourceField: `${srcLabel(fm, 'category')} + ${srcLabel(fm, 'hours')}`,
+      });
+    }
   }
 
+  const riskActive = activeIds.has('risk') && riskMetrics.length > 0;
+  const catGroups = col(fm, 'category') ? aggregateByGroup(recs, fm.mapping.category) : [];
   mods.push({
     moduleId: 'risk',
     moduleName: '分配与结构',
-    active: activeIds.has('risk'),
-    metrics: activeIds.has('risk') ? riskMetrics : [],
-    bars: toBars(recs.length
-      ? aggregateByGroup(recs, fm.mapping.category).map(g => ({ label: g.label, value: g.hours, formatted: `${f1(g.hours)}h` }))
-      : []),
-    barsTitle: fm.mapping.category ? '工作类别工时分布' : '',
-    skippedReason: activeIds.has('risk') ? undefined : '需要人员字段，且至少有工时或超时标注',
+    active: riskActive,
+    metrics: riskActive ? riskMetrics : [],
+    bars: riskActive && catGroups.length
+      ? toShareBars(catGroups.map(g => ({ label: g.label, value: valueOf(g) })), valueTotal)
+      : [],
+    barsTitle: catGroups.length ? `工作类别${valueWord}分布` : '',
+    skippedReason: activeIds.has('risk')
+      ? (riskMetrics.length ? undefined : '当前字段不足以计算分配结构指标（需要工时或产出数量）')
+      : '需要人员字段，且至少有工时或超时标注',
   });
 
-  // ── 4. 薪资成本 ──
+  // ── 4. 薪资分配 ──
+  const compIsAttribute = !col(fm, 'outputQuantity');
   const compMetrics: PeopleMetric[] = [];
+
+  // 薪资的分组占比：只在分组维度真的是「部门」时才出——工作类别跟薪资没有对应关系
+  const deptCompRows = col(fm, 'department') && groupField === col(fm, 'department')
+    ? [...groupAgg.entries()].filter(([, v]) => v.comp > 0).map(([label, v]) => ({ label, value: v.comp }))
+    : [];
+  const topDept = deptCompRows.slice().sort((a, b) => b.value - a.value)[0];
+
   if (activeIds.has('compensation')) {
-    const compIsAttribute = !fm.mapping.outputQuantity;
     compMetrics.push(
-      { key: 'totalComp', label: '总人工成本', value: totalComp, unit: '元', formatted: fmt(totalComp) },
       {
-        key: 'avgComp', label: compIsAttribute ? '平均薪资' : '人均人工成本',
-        value: safeDiv(totalComp, perEmp.length), unit: '元/人',
+        key: 'totalComp', label: '总人工成本', value: totalComp, unit: '元', formatted: fmt(totalComp),
+        formula: compIsAttribute
+          ? `Σ（每个人的 ${col(fm, 'compensation')}，同一人多行取值相同时只计一次）`
+          : `Σ[${col(fm, 'compensation')}]（逐行成本累加）`,
+        sourceField: srcLabel(fm, 'compensation'),
+      },
+      {
+        key: 'avgComp', label: entityIsFallback ? '平均人工成本' : compIsAttribute ? '平均薪资' : '人均人工成本',
+        value: safeDiv(totalComp, perEmp.length), unit: `元/${empUnit}`,
         formatted: fmt(safeDiv(totalComp, perEmp.length)),
+        formula: `总人工成本 ÷ ${entityIsFallback ? '分组数' : '员工数量'}`,
+        sourceField: srcLabel(fm, 'compensation'),
         note: compIsAttribute
           ? '按「人员属性」计一次：同一人的薪酬在多行重复出现，判定为月薪而非逐行成本'
           : '按「逐行成本」累加：每行视为当期人工成本，此处为表内全周期人均值',
       },
-      { key: 'compGini', label: '薪资集中度（基尼）', value: gini(perEmp.map(e => e.compensation)), unit: '', formatted: gini(perEmp.map(e => e.compensation)).toFixed(2) },
+      {
+        key: 'compGini', label: '薪资集中度（基尼）', value: gini(perEmp.map(e => e.compensation)), unit: '',
+        formatted: gini(perEmp.map(e => e.compensation)).toFixed(2),
+        formula: '各人薪酬的基尼系数', sourceField: srcLabel(fm, 'compensation'),
+        note: '0 为完全平均，1 为全部集中在一个人身上',
+      },
+      ...(topDept ? [{
+        key: 'topDeptCompShare', label: '薪资最高部门占比',
+        value: safeDiv(topDept.value, totalComp), unit: '%',
+        formatted: pctS(safeDiv(topDept.value, totalComp)),
+        formula: `${topDept.label} 的人工成本 ÷ 总人工成本`,
+        sourceField: `${srcLabel(fm, 'department')} + ${srcLabel(fm, 'compensation')}`,
+      }] : []),
     );
   }
+
   mods.push({
     moduleId: 'compensation',
-    moduleName: '薪资成本',
+    moduleName: '薪资分配',
     active: activeIds.has('compensation'),
     metrics: compMetrics,
-    bars: activeIds.has('compensation')
-      ? toBars(perEmp.filter(e => e.compensation > 0).map(e => ({ label: e.employee, value: e.compensation, formatted: `${fmt(e.compensation)} 元` })))
-      : [],
-    barsTitle: '个人薪资分布',
+    bars: !activeIds.has('compensation') ? []
+      : deptCompRows.length
+        ? toShareBars(deptCompRows, totalComp)
+        : toBars(perEmp.filter(e => e.compensation > 0).map(e => ({ label: e.employee, value: e.compensation, formatted: `${fmt(e.compensation)} 元` }))),
+    barsTitle: deptCompRows.length ? '部门薪资占比' : '个人薪资分布',
     skippedReason: activeIds.has('compensation') ? undefined : '未检测到薪资/人工成本字段（工资、薪资、人工成本、月度成本）',
   });
 
@@ -742,7 +1019,7 @@ export function runPeopleAnalysis(input: PeopleAnalysisInput): PeopleAnalysis | 
   const perEmp = aggregateByEmployee(recs, !mapping.mapping.outputQuantity);
   const groups = aggregateByGroup(recs, router.groupField);
   const rules = runPeopleRules(recs, perEmp, groups, mapping);
-  const modules = buildModules(recs, perEmp, groups, mapping, router.groupField, router.groupFieldSource, activeIds, entityIsFallback);
+  const modules = buildModules(recs, perEmp, groups, mapping, router.efficiency, router.groupField, router.groupFieldSource, activeIds, entityIsFallback);
 
   const skippedDimensions = router.modules
     .filter(m => !m.active)
@@ -769,33 +1046,50 @@ export function runPeopleAnalysis(input: PeopleAnalysisInput): PeopleAnalysis | 
 }
 
 export function generatePeopleReport(a: PeopleAnalysis): string {
-  const mod = (id: PeopleModuleId) => a.modules.find(m => m.moduleId === id);
-  const line = (m: PeopleMetric) => `- ${m.label}：${m.formatted}${m.unit && m.unit !== '%' ? ` ${m.unit}` : ''}${m.note ? `（${m.note}）` : ''}`;
+  // 每个指标都带上算式与来源字段——报告里的数字必须能追溯回原始列
+  const line = (m: PeopleMetric) => {
+    const unit = m.unit && m.unit !== '%' ? ` ${m.unit}` : '';
+    const sub = [
+      m.formula ? `算式：${m.formula}` : '',
+      m.sourceField ? `来源字段：${m.sourceField}` : '',
+      m.note ?? '',
+    ].filter(Boolean).map(s => `    - ${s}`).join('\n');
+    return `- **${m.label}**：${m.formatted}${unit}${sub ? `\n${sub}` : ''}`;
+  };
 
   const activeMods = a.modules.filter(m => m.active);
   const skipped = a.modules.filter(m => !m.active);
+  const headline = a.modules.flatMap(m => m.metrics).find(m => m.key === 'headline');
+  const empWord = a.entityIsFallback ? '分组数' : '员工数量';
 
   return `# 人效分析报告
 
 ## 1. 数据概览
 - 记录条数：${fmt(a.rowCount)} 条
-- 参与人数：${a.employeeCount} 人
+- ${empWord}：${a.employeeCount} ${a.entityIsFallback ? '组' : '人'}${a.entityIsFallback ? '（表中无人员列，按分组维度统计）' : ''}
 - 分组维度：${a.groupField ?? '无'}（来源：${a.groupFieldSource === 'department' ? '部门字段' : a.groupFieldSource === 'category' ? '工作类别（兜底，非真实组织架构）' : a.groupFieldSource === 'fallback' ? '自动推断的分类列（兜底）' : '未识别到可用维度'}）
 - 已识别字段：${Object.entries(a.mapping.mapping).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join('、')}
+- 未使用列：${a.mapping.unusedColumns.length ? a.mapping.unusedColumns.join('、') : '无'}
 
 ## 2. 人效比口径
 **${a.efficiency.name}** = ${a.efficiency.formula}（单位：${a.efficiency.unit}）
 
+${headline ? `**本次结果：${headline.formatted}${headline.unit && headline.unit !== '%' ? ` ${headline.unit}` : ''}** —— ${headline.note ?? ''}\n` : ''}
 > ${a.efficiency.reason}
 
-## 3. 指标概览
-${activeMods.map(m => `### ${m.moduleName}\n${m.metrics.map(line).join('\n')}`).join('\n\n')}
+## 3. 分析指标
+${activeMods.map(m => {
+    const bars = m.bars.length
+      ? `\n分布（${m.barsTitle}）：\n${m.bars.map(b => `  - ${b.label}：${b.formatted}`).join('\n')}`
+      : '';
+    return `### ${m.moduleName}\n${m.metrics.map(line).join('\n')}${bars}`;
+  }).join('\n\n')}
 
-${skipped.length ? `## 4. 已跳过的维度\n${skipped.map(m => `- **${m.moduleName}**：${m.skippedReason}`).join('\n')}\n\n` : ''}## ${skipped.length ? 5 : 4}. 人效异常诊断
-${a.rules.map(r => `### 【${r.severity === 'high' ? '高' : r.severity === 'medium' ? '中' : '低'}】${r.ruleName}（${r.ruleId}）\n- 计算口径：${r.triggerCondition}\n- 数据证据：\n${r.evidence.map(e => `  - ${e}`).join('\n')}\n- 业务判断：${r.conclusion}\n- 建议动作：${r.suggestion}`).join('\n\n')}
+${skipped.length ? `## 4. 已跳过的维度（数据不足）\n${skipped.map(m => `- **${m.moduleName}**：${m.skippedReason}`).join('\n')}\n\n补充对应字段后重新上传即可自动启用，无需改代码。\n\n` : ''}## ${skipped.length ? 5 : 4}. 人效异常诊断
+${a.rules.map(r => `### 【${r.severity === 'high' ? '高' : r.severity === 'medium' ? '中' : '低'}】${r.ruleName}（${r.ruleId}）\n- 触发条件：${r.triggerCondition}\n- 数据证据：\n${r.evidence.map(e => `  - ${e}`).join('\n')}\n- 业务判断：${r.conclusion}\n- 建议动作：${r.suggestion}`).join('\n\n')}
 
 ## ${skipped.length ? 6 : 5}. 使用说明与边界
-1. 本报告由**本地规则引擎**生成，未接入任何大模型，全部结论可追溯到上方列出的原始数字。
+1. 本报告由**本地规则引擎**生成，未接入任何大模型，全部结论可追溯到上方列出的原始数字与来源字段。
 2. 产出率类指标反映的是**工作量密度**，不是业务价值。同样的数字在不同任务构成下含义完全不同，不能直接用于人员评价。
 3. 涉及个人的结论（PE01/PE03/PE05/PE10）都应先排除任务复杂度与岗位差异，再作判断。
 4. 单点数据分析不出趋势。建议按月上传同一口径的数据，观察指标变化而非绝对值。
