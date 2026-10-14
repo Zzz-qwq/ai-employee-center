@@ -59,6 +59,25 @@ function ModuleCard({ m }: { m: PeopleModuleResult }) {
   );
 }
 
+function ExecBlock({ title, items, tone = 'normal' }: { title: string; items: string[]; tone?: 'normal' | 'warn' | 'muted' }) {
+  const color = tone === 'warn' ? 'text-[#111111]' : tone === 'muted' ? 'text-[#999999]' : 'text-[#666666]';
+  const dot = tone === 'warn' ? 'bg-[#111111]' : 'bg-[#999999]';
+  return (
+    <div>
+      <p className="text-xs font-semibold text-[#111111]">{title}</p>
+      <ul className="mt-2 space-y-1.5">
+        {items.length === 0 && <li className="text-xs text-[#999999]">（无）</li>}
+        {items.map((x, i) => (
+          <li key={i} className={`flex gap-1.5 text-xs leading-relaxed ${color}`}>
+            <span className={`mt-1.5 h-1 w-1 shrink-0 rounded-full ${dot}`} />
+            <span>{x}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function MetricsPanel({ analysis }: { analysis: PeopleAnalysis }) {
   const mods = ORDER
     .map(id => analysis.modules.find(m => m.moduleId === id))
@@ -68,6 +87,17 @@ export default function MetricsPanel({ analysis }: { analysis: PeopleAnalysis })
 
   return (
     <div className="space-y-4">
+      {/* 管理摘要：报告最上面那一屏 */}
+      <section className="rounded-2xl border-2 border-[#111111] bg-white p-5">
+        <h2 className="text-base font-bold text-[#111111]">管理摘要</h2>
+        <p className="mt-2 text-sm leading-relaxed text-[#111111]">{analysis.executive.summary}</p>
+        <div className="mt-4 grid gap-4 border-t border-[#E5E5E5] pt-4 md:grid-cols-3">
+          <ExecBlock title="核心发现" items={analysis.executive.findings} />
+          <ExecBlock title="风险提示" items={analysis.executive.risks} tone="warn" />
+          <ExecBlock title="数据缺口" items={analysis.executive.missingData} tone="muted" />
+        </div>
+      </section>
+
       {/* 数据概览 + 口径声明 */}
       <section className="rounded-2xl border border-[#E5E5E5] bg-white p-5">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-[#666666]">
@@ -84,13 +114,9 @@ export default function MetricsPanel({ analysis }: { analysis: PeopleAnalysis })
           </span>
         </div>
 
-        {analysis.summary && (
-          <p className="mt-3 text-sm leading-relaxed text-[#111111]">{analysis.summary}</p>
-        )}
-
         <div className="mt-4 rounded-xl border border-[#E5E5E5] bg-[#F5F5F5] p-4">
           <p className="flex items-center gap-1.5 text-xs font-semibold text-[#111111]">
-            <Info size={13} /> 本次人效比口径：{analysis.efficiency.name}（{analysis.efficiency.unit}）
+            <Info size={13} /> 本次效率口径：{analysis.efficiency.name}（{analysis.efficiency.unit}）
           </p>
           <p className="mt-1 font-mono text-xs text-[#666666]">{analysis.efficiency.formula}</p>
           <p className="mt-2 text-xs leading-relaxed text-[#666666]">{analysis.efficiency.reason}</p>
@@ -120,6 +146,39 @@ export default function MetricsPanel({ analysis }: { analysis: PeopleAnalysis })
           </p>
         </section>
       )}
+
+      {/* 能力边界：先讲清楚不能回答什么，比一份"看起来很全面"的报告更可信 */}
+      <section className="rounded-2xl border border-[#E5E5E5] bg-white p-5">
+        <h3 className="text-sm font-bold text-[#111111]">能力边界</h3>
+        <div className="mt-3 grid gap-4 md:grid-cols-2">
+          <div>
+            <p className="text-xs font-semibold text-[#666666]">当前可以回答</p>
+            <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-[#666666]">
+              {['工作投入：总工时、人均工时、工作类型分布、投入结构',
+                '工作结构：工作类别分布、事务性工作占比、投入集中度',
+                '效率信号：单位投入的任务密度、超时情况、团队离散度',
+                '异常提示：偏离团队分布的投入或产出信号'].map(x => (
+                <li key={x} className="flex gap-1.5">
+                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-[#111111]" />{x}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-[#666666]">当前不能判断</p>
+            <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-[#999999]">
+              {['个人绩效好坏——同样的效率数字在不同任务构成下含义完全不同',
+                '薪酬是否合理——需要岗位级别、职责范围等本表没有的信息',
+                '业务价值贡献——缺少收入/产出价值字段时，工作量密度不等于价值',
+                '该给谁加薪或调整——本报告不产出此类建议'].map(x => (
+                <li key={x} className="flex gap-1.5">
+                  <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-[#E5E5E5]" />{x}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

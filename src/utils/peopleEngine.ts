@@ -2,6 +2,7 @@ import {
   CanonicalField,
   Diagnosis,
   EfficiencyDefinition,
+  ExecutiveSummary,
   FieldMapping,
   PeopleAnalysis,
   PeopleBar,
@@ -148,6 +149,27 @@ function aggregateByGroup(recs: PeopleRecord[], field: string | null): GroupAgg[
   return [...map.values()].sort((a, b) => b.hours - a.hours);
 }
 
+/**
+ * 分布型条形图：把数值分 4 个区间，只报每个区间的**人数和取值范围**。
+ * 刻意不给个人排名——排名会退化成「谁好谁差」，而当前数据撑不起这个结论。
+ */
+function toDistributionBars(values: number[], unit: string, digits = 3): PeopleBar[] {
+  const v = values.filter(x => x > 0).sort((a, b) => a - b);
+  if (v.length < 4) return [];
+  const q = [0, 0.25, 0.5, 0.75, 1].map(p => v[Math.round(p * (v.length - 1))]);
+  const labels = ['最低区间', '较低区间', '较高区间', '最高区间'];
+  const counts = [0, 0, 0, 0];
+  for (const x of v) counts[x <= q[1] ? 0 : x <= q[2] ? 1 : x <= q[3] ? 2 : 3] += 1;
+  const max = Math.max(...counts);
+  const f = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: digits });
+  return labels.map((label, i) => ({
+    label: `${label}（${f(q[i])} ~ ${f(q[i + 1])} ${unit}）`,
+    value: counts[i],
+    formatted: `${counts[i]} 人`,
+    ratio: max > 0 ? counts[i] / max : 0,
+  }));
+}
+
 const toBars = (rows: { label: string; value: number; formatted: string }[], limit = 8): PeopleBar[] => {
   const top = rows.sort((a, b) => b.value - a.value).slice(0, limit);
   const max = top.length ? Math.max(...top.map(t => t.value)) : 0;
@@ -183,7 +205,7 @@ function runPeopleRules(recs: PeopleRecord[], perEmp: EmpAgg[], groups: GroupAgg
     const ratio = worst.rate / medRate;
     out.push({
       ruleId: 'PE01',
-      ruleName: '高工时低产出：单位工时完成的工作项明显低于团队',
+      ruleName: '投入产出比偏低：单位工时的任务完成量低于团队分布',
       severity: ratio < 0.5 ? 'high' : 'medium',
       triggerCondition: `个人产出率 < 团队中位数产出率 × 0.7（团队中位数 ${f3(medRate)} 项/小时）`,
       evidence: [
@@ -192,7 +214,7 @@ function runPeopleRules(recs: PeopleRecord[], perEmp: EmpAgg[], groups: GroupAgg
         `团队单条平均工时中位数 ${f2(median(withHours.map(e => e.avgHoursPerItem)))} 小时`,
         ...(lowRate.length > 1 ? [`另有 ${lowRate.length - 1} 人低于该阈值：${lowRate.slice(1, 4).map(e => e.employee).join('、')}`] : []),
       ],
-      conclusion: `${worst.employee} 的单位工时产出只有团队中位数的一半左右，属于产出效率洼地。但产出率低不等于人不行——任务复杂度和任务类型差异会直接影响这个数字，需要先排除这两项再谈效率。`,
+      conclusion: `${worst.employee} 的单位工时完成量约为团队中位数的 ${(ratio * 100).toFixed(0)}%，是一个**重点观察项**，而不是效率结论——任务复杂度与工作类型差异会直接影响这个数字，需要先排除这两项。`,
       suggestion: `1）先核对 ${worst.employee} 承担的任务类型，看是否集中在高复杂度、长周期事项上；2）把其单条耗时最长的几条任务拉出来逐条复盘，区分「任务本身难」与「流程/工具卡住」；3）如果确认同类任务耗时显著高于他人，再考虑排期与协作方式调整。`,
       verify: [
         '该成员承担的任务是否系统性偏向高复杂度类别（可交叉对比工作类别分布）',
@@ -239,7 +261,7 @@ function runPeopleRules(recs: PeopleRecord[], perEmp: EmpAgg[], groups: GroupAgg
       const worst = hits[0];
       out.push({
         ruleId: 'PE03',
-        ruleName: '超时率异常：个人任务耗时系统性超出标准工时',
+        ruleName: '任务耗时超出标准区间：个人超时比例高于团队',
         severity: worst.overtimeRate >= 0.4 ? 'high' : 'medium',
         triggerCondition: `个人超时率 ≥ 团队超时率 × 2（团队 ${pctS(teamOvertimeRate)}）或 ≥ 30%，且至少有 5 条超时标注`,
         evidence: [
@@ -265,7 +287,7 @@ function runPeopleRules(recs: PeopleRecord[], perEmp: EmpAgg[], groups: GroupAgg
     if (top2 / teamYes >= 0.5) {
       out.push({
         ruleId: 'PE04',
-        ruleName: '超时集中度高：少数人贡献了大部分超时记录',
+        ruleName: '超时分布集中：少数成员占比较高',
         severity: 'medium',
         triggerCondition: '超时记录数最多的 2 人合计占团队超时记录 ≥ 50%，且团队超时 ≥ 10 条',
         evidence: [
@@ -294,7 +316,7 @@ function runPeopleRules(recs: PeopleRecord[], perEmp: EmpAgg[], groups: GroupAgg
         const top = hits[0];
         out.push({
           ruleId: 'PE05',
-          ruleName: '单人工时异常：完成单位产出的耗时显著偏离团队',
+          ruleName: '单位投入指标偏离团队分布：建议结合任务类型验证',
           severity: Math.abs(top.z) >= 2.5 ? 'high' : 'medium',
           triggerCondition: '|个人单位产出耗时 z 值| ≥ 2.0，且有效记录 ≥ 5 条',
           evidence: [
@@ -322,7 +344,7 @@ function runPeopleRules(recs: PeopleRecord[], perEmp: EmpAgg[], groups: GroupAgg
       const sorted = [...eligible].sort((a, b) => a.rate - b.rate);
       out.push({
         ruleId: 'PE06',
-        ruleName: '个体产出差异异常：团队内部效率离散度偏高',
+        ruleName: '单位投入差异较大：团队内部产出分布离散',
         severity: c >= 0.45 ? 'high' : 'medium',
         triggerCondition: '个人产出率的变异系数 CV = σ/μ ≥ 0.30',
         evidence: [
@@ -411,7 +433,7 @@ function runPeopleRules(recs: PeopleRecord[], perEmp: EmpAgg[], groups: GroupAgg
       const h = hits[0];
       out.push({
         ruleId: 'PE10',
-        ruleName: '高薪低产出：人工成本与产出效率不匹配',
+        ruleName: '成本与产出不匹配：需结合岗位职责进一步验证',
         severity: 'high',
         triggerCondition: '个人薪酬 ≥ 团队均值 × 1.3，且个人产出率 < 团队中位数 × 0.8',
         evidence: [
@@ -806,8 +828,9 @@ function buildModules(
           formatted: `${f2(safeDiv(v.amount, v.comp))} 元/元`,
         })))
     : [];
+  // 只给区间分布，不给个人排名（排名无法反映任务构成差异）
   const personRateBars = hasHours
-    ? toBars(perEmp.filter(e => e.hours > 0).map(e => ({ label: e.employee, value: e.rate, formatted: `${f3(e.rate)} 项/小时` })))
+    ? toDistributionBars(perEmp.filter(e => e.hours > 0).map(e => e.rate), '项/小时', 3)
     : [];
 
   mods.push({
@@ -818,7 +841,7 @@ function buildModules(
     bars: groupEffBars.length ? groupEffBars : personRateBars,
     barsTitle: groupEffBars.length
       ? `分组人效排名 · 收入 ÷ 人工成本`
-      : personRateBars.length ? '个人产出率 · 项/小时' : '',
+      : personRateBars.length ? '单位投入分布 · 项/小时（只显示区间，不排名）' : '',
     skippedReason: activeIds.has('efficiency') ? undefined : '当前字段组合无法构成任何一种人效比口径',
   });
 
@@ -938,8 +961,8 @@ function buildModules(
     bars: !activeIds.has('compensation') ? []
       : deptCompRows.length
         ? toShareBars(deptCompRows, totalComp)
-        : toBars(perEmp.filter(e => e.compensation > 0).map(e => ({ label: e.employee, value: e.compensation, formatted: `${fmt(e.compensation)} 元` }))),
-    barsTitle: deptCompRows.length ? '部门薪资占比' : '个人薪资分布',
+        : toDistributionBars(perEmp.filter(e => e.compensation > 0).map(e => e.compensation), '元', 0),
+    barsTitle: deptCompRows.length ? '部门薪资占比' : '薪资分布 · 元（只显示区间，不排名）',
     skippedReason: activeIds.has('compensation') ? undefined : '未检测到薪资/人工成本字段（工资、薪资、人工成本、月度成本）',
   });
 
@@ -975,7 +998,7 @@ function buildPeopleDiagnoses(rules: PeopleRule[]): Diagnosis[] {
   }));
 }
 
-function buildSummary(a: Omit<PeopleAnalysis, 'summary'>, totalHours: number): string {
+function buildSummary(a: Omit<PeopleAnalysis, 'summary' | 'executive'>, totalHours: number): string {
   const eff = a.modules.find(m => m.moduleId === 'efficiency');
   const rate = eff?.metrics.find(m => m.key === 'rate');
   const pass = eff?.metrics.find(m => m.key === 'passRate');
@@ -989,6 +1012,59 @@ function buildSummary(a: Omit<PeopleAnalysis, 'summary'>, totalHours: number): s
     a.skippedDimensions.length ? `因缺少数据，以下维度已跳过：${a.skippedDimensions.map(s => s.dimension).join('、')}。` : '',
   ];
   return bits.join('');
+}
+
+/**
+ * 管理摘要：报告最上面那一屏，给管理者看的。
+ * 只讲工作投入与工作模式，且**明确列出数据缺口**——
+ * 能回答什么、不能回答什么都先说清楚，比一份"看起来很全面"的报告可信。
+ */
+function buildExecutive(a: Omit<PeopleAnalysis, 'executive'>): ExecutiveSummary {
+  const metric = (id: PeopleModuleId, k: string) =>
+    a.modules.find(m => m.moduleId === id)?.metrics.find(x => x.key === k);
+
+  const empWord = a.entityIsFallback ? '个分组' : '人';
+  const hours = metric('productivity', 'hours');
+  const items = metric('productivity', 'items');
+  const topGroup = metric('productivity', 'topGroupShare');
+  const headline = metric('efficiency', 'headline');
+  const pass = metric('efficiency', 'passRate');
+
+  const findings: string[] = [];
+  findings.push(
+    `本次覆盖 ${a.employeeCount} ${empWord}、${fmt(a.rowCount)} 条记录` +
+    `${hours ? `，累计投入 ${hours.formatted} 小时` : ''}` +
+    `${items ? `，可统计的工作项 ${items.formatted} 项` : ''}。`,
+  );
+  if (topGroup) findings.push(`投入结构：${topGroup.formula} = ${topGroup.formatted}。`);
+  if (headline) {
+    findings.push(`效率口径为「${a.efficiency.name}」，本次结果 ${headline.formatted}${headline.unit && headline.unit !== '%' ? ` ${headline.unit}` : ''}。`);
+  }
+  if (pass) findings.push(`标准工时达标率 ${pass.formatted}。`);
+
+  // 管理摘要是给管理者看的第一屏，**只描述团队级信号，不点名个人**——
+  // 具体到人的证据留在下面的诊断详情里，那里有「建议验证」的上下文。
+  const risks = a.rules
+    .filter(r => r.ruleId !== 'PE09' && r.severity !== 'low')
+    .slice(0, 3)
+    .map(r => `${r.ruleName}（判定口径：${r.triggerCondition}）`);
+
+  const missingData = [
+    ...a.skippedDimensions.map(s => `${s.dimension}：${s.reason}`),
+    ...(a.mapping.unresolved.length ? [`表中未识别到的字段：${a.mapping.unresolved.join('、')}`] : []),
+    ...(!a.mapping.unresolved.length && !a.skippedDimensions.length
+      ? ['本次数据字段较完整，暂无缺口。建议按月上传同一口径数据以观察趋势。'] : []),
+  ];
+
+  const summary = [
+    `本次分析覆盖 ${a.employeeCount} ${empWord}、${fmt(a.rowCount)} 条记录`,
+    headline ? `，效率口径为「${a.efficiency.name}」，结果 ${headline.formatted}${headline.unit && headline.unit !== '%' ? ` ${headline.unit}` : ''}` : '',
+    risks.length ? `；发现 ${risks.length} 项值得关注的组织效率信号` : '；未发现明显的效率风险信号',
+    a.skippedDimensions.length ? `。因缺少部分数据，有 ${a.skippedDimensions.length} 个分析维度未启用` : '',
+    '。本报告只反映工作投入与工作模式，不构成对个人的绩效评价。',
+  ].join('');
+
+  return { summary, findings, risks, missingData };
 }
 
 // ═══════════════════════════════════════════
@@ -1025,7 +1101,7 @@ export function runPeopleAnalysis(input: PeopleAnalysisInput): PeopleAnalysis | 
     .filter(m => !m.active)
     .map(m => ({ dimension: m.moduleId === 'compensation' ? '薪资成本分析' : m.moduleId, reason: m.reason }));
 
-  const base: Omit<PeopleAnalysis, 'summary'> = {
+  const base: Omit<PeopleAnalysis, 'summary' | 'executive'> = {
     task: '人效分析',
     rowCount: recs.length,
     validRecordCount: recs.filter(r => r.hours !== null).length,
@@ -1042,7 +1118,9 @@ export function runPeopleAnalysis(input: PeopleAnalysisInput): PeopleAnalysis | 
   };
 
   const totalHours = sum(recs.map(r => r.hours ?? 0));
-  return { ...base, summary: buildSummary(base, totalHours) };
+  const summary = buildSummary(base, totalHours);
+  const full = { ...base, summary };
+  return { ...full, executive: buildExecutive(full) };
 }
 
 export function generatePeopleReport(a: PeopleAnalysis): string {
@@ -1062,38 +1140,85 @@ export function generatePeopleReport(a: PeopleAnalysis): string {
   const headline = a.modules.flatMap(m => m.metrics).find(m => m.key === 'headline');
   const empWord = a.entityIsFallback ? '分组数' : '员工数量';
 
-  return `# 人效分析报告
+  const sec = (id: string) => a.modules.find(m => m.moduleId === id);
+  const block = (m?: PeopleModuleResult) => {
+    if (!m || !m.active) return '';
+    const bars = m.bars.length
+      ? `\n分布（${m.barsTitle}）：\n${m.bars.map(b => `  - ${b.label}：${b.formatted}`).join('\n')}`
+      : '';
+    return `### ${m.moduleName}\n${m.metrics.map(line).join('\n')}${bars}`;
+  };
+  const list = (xs: string[]) => (xs.length ? xs.map(x => `- ${x}`).join('\n') : '（无）');
 
-## 1. 数据概览
+  return `# 人力投入与工作效率分析报告
+
+> 本报告分析的是**工作投入与工作模式**，不是员工绩效评价。数据能回答什么、不能回答什么，见文末「能力边界」。
+
+## 1. 管理摘要
+${a.executive.summary}
+
+**核心发现**
+${list(a.executive.findings)}
+
+**风险提示**
+${list(a.executive.risks)}
+
+**数据缺口**
+${list(a.executive.missingData)}
+
+## 2. 数据范围与可信度
 - 记录条数：${fmt(a.rowCount)} 条
 - ${empWord}：${a.employeeCount} ${a.entityIsFallback ? '组' : '人'}${a.entityIsFallback ? '（表中无人员列，按分组维度统计）' : ''}
 - 分组维度：${a.groupField ?? '无'}（来源：${a.groupFieldSource === 'department' ? '部门字段' : a.groupFieldSource === 'category' ? '工作类别（兜底，非真实组织架构）' : a.groupFieldSource === 'fallback' ? '自动推断的分类列（兜底）' : '未识别到可用维度'}）
 - 已识别字段：${Object.entries(a.mapping.mapping).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join('、')}
 - 未使用列：${a.mapping.unusedColumns.length ? a.mapping.unusedColumns.join('、') : '无'}
 
-## 2. 人效比口径
-**${a.efficiency.name}** = ${a.efficiency.formula}（单位：${a.efficiency.unit}）
-
+**本次效率口径**：${a.efficiency.name} = ${a.efficiency.formula}（单位：${a.efficiency.unit}）
 ${headline ? `**本次结果：${headline.formatted}${headline.unit && headline.unit !== '%' ? ` ${headline.unit}` : ''}** —— ${headline.note ?? ''}\n` : ''}
 > ${a.efficiency.reason}
 
-## 3. 分析指标
-${activeMods.map(m => {
-    const bars = m.bars.length
-      ? `\n分布（${m.barsTitle}）：\n${m.bars.map(b => `  - ${b.label}：${b.formatted}`).join('\n')}`
-      : '';
-    return `### ${m.moduleName}\n${m.metrics.map(line).join('\n')}${bars}`;
+**可信度说明**：所有指标均由本地规则引擎按上方列出的来源字段直接计算，无估算、无模型推断。数字可逐条核回原始表。
+
+## 3. 人力投入概览
+${[block(sec('productivity')), block(sec('efficiency'))].filter(Boolean).join('\n\n')}
+
+## 4. 工作结构分析
+${[block(sec('risk')), block(sec('compensation'))].filter(Boolean).join('\n\n')}
+
+## 5. 效率风险提示
+${a.diagnoses.map(d => {
+    const r = d.rules[0];
+    return `### 【${r.severity === 'high' ? '需优先关注' : r.severity === 'medium' ? '值得关注' : '提示'}】${d.title}（${r.ruleId}）\n- **发现**：${r.ruleName}\n- **数据证据**：\n${d.dataSupportedReasons.map(e => `  - ${e}`).join('\n')}\n- **计算方式**：${r.triggerCondition}\n- **建议验证**：\n${d.needsVerificationReasons.map(v => `  - ${v}`).join('\n')}\n- **判断**：${d.businessJudgment}\n- **建议动作**：${r.suggestion}`;
   }).join('\n\n')}
 
-${skipped.length ? `## 4. 已跳过的维度（数据不足）\n${skipped.map(m => `- **${m.moduleName}**：${m.skippedReason}`).join('\n')}\n\n补充对应字段后重新上传即可自动启用，无需改代码。\n\n` : ''}## ${skipped.length ? 5 : 4}. 人效异常诊断
-${a.rules.map(r => `### 【${r.severity === 'high' ? '高' : r.severity === 'medium' ? '中' : '低'}】${r.ruleName}（${r.ruleId}）\n- 触发条件：${r.triggerCondition}\n- 数据证据：\n${r.evidence.map(e => `  - ${e}`).join('\n')}\n- 业务判断：${r.conclusion}\n- 建议动作：${r.suggestion}`).join('\n\n')}
+## 6. 重点观察项
+以下几项是**建议结合实际情况进一步验证**的方向（不是对个人的评价）：
+${list(a.diagnoses.filter(d => d.rules[0].ruleId !== 'PE09').flatMap(d => d.needsVerificationReasons.slice(0, 2).map(v => `（${d.rules[0].ruleId}）${v}`)))}
 
-## ${skipped.length ? 6 : 5}. 使用说明与边界
-1. 本报告由**本地规则引擎**生成，未接入任何大模型，全部结论可追溯到上方列出的原始数字与来源字段。
-2. 产出率类指标反映的是**工作量密度**，不是业务价值。同样的数字在不同任务构成下含义完全不同，不能直接用于人员评价。
-3. 涉及个人的结论（PE01/PE03/PE05/PE10）都应先排除任务复杂度与岗位差异，再作判断。
-4. 单点数据分析不出趋势。建议按月上传同一口径的数据，观察指标变化而非绝对值。
+## 7. 数据缺口与下一步建议
+${skipped.length
+    ? `${skipped.map(m => `- **${m.moduleName}**：${m.skippedReason}`).join('\n')}\n\n补充上述字段后重新上传即可自动启用，无需改代码。`
+    : '- 本表字段已覆盖投入、产出与成本三个维度，暂无缺口。'}
+${a.mapping.unresolved.length ? `\n未能识别的字段：${a.mapping.unresolved.join('、')}` : ''}
 
 ---
-本报告由本地规则引擎与模拟 AI 总结生成，后续可替换为真实 LLM API 生成更自然的业务复盘。`;
+
+## 能力边界
+
+**当前可以回答**
+- 工作投入：总工时、人均工时、工作类型分布、人员/分组投入结构
+- 工作结构：工作类别分布、事务性工作占比、投入集中度
+- 效率信号：单位投入的任务密度、超时情况、单位投入的团队离散度
+- 异常提示：偏离团队分布的投入或产出信号
+
+**当前不能判断**
+- ❌ 个人绩效好坏——同样的效率数字在不同任务构成下含义完全不同
+- ❌ 薪酬是否合理——需要岗位级别、职责范围等本表没有的信息
+- ❌ 业务价值贡献——缺少收入/产出价值字段时，工作量密度不等于价值
+- ❌ 该给谁加薪或调整——本报告不产出此类建议
+
+**使用提醒**：涉及个人的观察项都应先排除任务复杂度、岗位差异与隐性工作，再作判断。单点数据看不出趋势，建议按月上传同一口径的数据观察变化。
+
+---
+本报告由本地规则引擎与模拟 AI 总结生成，未接入任何大模型。`;
 }

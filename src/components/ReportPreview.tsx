@@ -5,18 +5,22 @@ export default function ReportPreview({
   task,
   onBack,
   titleSuffix = '复盘报告',
+  title,
 }: {
   report: string;
   task: TaskType;
   onBack: () => void;
   titleSuffix?: string;
+  /** 覆盖标题与文件名；不传则用「任务名 + titleSuffix」 */
+  title?: string;
 }) {
+  const heading = title ?? `${task} ${titleSuffix}`;
   const copy = () => navigator.clipboard.writeText(report);
   const download = () => {
     const blob = new Blob([report], { type: 'text/markdown;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `${task.replace(/\s/g, '_')}_${titleSuffix}.md`;
+    a.download = `${heading.replace(/[\s/]/g, '_')}.md`;
     a.click();
   };
 
@@ -24,7 +28,7 @@ export default function ReportPreview({
     <div className="rounded-2xl bg-white border border-[#E5E5E5] overflow-hidden">
       {/* Header bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-[#E5E5E5]">
-        <h3 className="text-lg font-bold text-[#111111]">{task} {titleSuffix}</h3>
+        <h3 className="text-lg font-bold text-[#111111]">{heading}</h3>
         <div className="flex gap-2">
           <button
             onClick={copy}

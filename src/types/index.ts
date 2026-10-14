@@ -192,6 +192,21 @@ export interface SkippedDimension {
   reason: string;
 }
 
+/**
+ * 管理摘要：报告顶部给管理者看的那一屏。
+ * 只讲「工作投入与工作模式」，不评价个人。
+ */
+export interface ExecutiveSummary {
+  /** 一句话总述 */
+  summary: string;
+  /** 核心发现 */
+  findings: string[];
+  /** 组织层面的风险提示（不是个人评价） */
+  risks: string[];
+  /** 数据缺口——还缺什么才能回答更进一步的问题 */
+  missingData: string[];
+}
+
 export interface PeopleAnalysis {
   task: '人效分析';
   rowCount: number;
@@ -208,5 +223,6 @@ export interface PeopleAnalysis {
   rules: RuleResult[];
   diagnoses: Diagnosis[];
   summary: string;
+  executive: ExecutiveSummary;
   skippedDimensions: SkippedDimension[];
 }

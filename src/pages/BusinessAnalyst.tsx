@@ -762,6 +762,7 @@ export default function BusinessAnalyst({ onHome }: { onHome: () => void }) {
               task={task}
               onBack={() => setStep(7)}
               titleSuffix={isPeople ? '分析报告' : undefined}
+              title={isPeople ? '人力投入与工作效率分析报告' : undefined}
             />
           </div>
         )}
